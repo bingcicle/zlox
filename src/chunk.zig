@@ -52,7 +52,7 @@ pub fn Chunk() type {
         }
 
         pub fn addConstant(self: *Self, value: Value) anyerror!u8 {
-            try self.constants.write(value.data);
+            try self.constants.write(value);
             return @truncate(u8, self.constants.count - 1);
         }
 

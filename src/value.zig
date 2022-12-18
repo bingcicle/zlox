@@ -12,7 +12,7 @@ pub fn ValueArray() type {
 
         count: usize = 0,
         capacity: usize = 0,
-        values: []f64 = &[_]f64{},
+        values: []Value = &[_]Value{},
         allocator: Allocator,
 
         pub fn init(allocator: Allocator) Self {
@@ -30,11 +30,11 @@ pub fn ValueArray() type {
             self.capacity = new_memory.len;
         }
 
-        fn allocatedSlice(self: Self) []f64 {
+        fn allocatedSlice(self: Self) []Value {
             return self.values.ptr[0..self.capacity];
         }
 
-        pub fn write(self: *Self, value: f64) anyerror!void {
+        pub fn write(self: *Self, value: Value) anyerror!void {
             if (self.capacity < self.count + 1) {
                 var capacity = growCapacity(self.capacity) catch |err| {
                     std.debug.print("ERR: {}", .{err});
@@ -57,9 +57,10 @@ test "writeValue" {
         try std.testing.expect(values.capacity == 0);
         try std.testing.expect(values.count == 0);
 
-        try values.write(4.20);
+        var value = Value{ .data = 4.20 };
+        try values.write(value);
 
-        try std.testing.expect(values.values.ptr[0] == 4.20);
+        try std.testing.expect(values.values.ptr[0].data == 4.20);
         try std.testing.expect(values.capacity == 8);
         try std.testing.expect(values.count == 1);
     }
