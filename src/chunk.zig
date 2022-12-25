@@ -40,8 +40,8 @@ pub fn Chunk() type {
         }
 
         fn growArray(self: *Self, new_capacity: usize) anyerror!void {
-            const new_code_memory = try self.allocator.reallocAtLeast(self.code.ptr[0..self.capacity], new_capacity);
-            const new_lines_memory = try self.allocator.reallocAtLeast(self.lines.ptr[0..self.capacity], new_capacity);
+            const new_code_memory = try self.allocator.realloc(self.code.ptr[0..self.capacity], new_capacity);
+            const new_lines_memory = try self.allocator.realloc(self.lines.ptr[0..self.capacity], new_capacity);
             self.code.ptr = new_code_memory.ptr;
             self.lines.ptr = new_lines_memory.ptr;
             self.capacity = new_code_memory.len;

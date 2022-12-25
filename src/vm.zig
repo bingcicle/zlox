@@ -29,12 +29,7 @@ pub fn VirtualMachine() type {
 
         pub fn init(allocator: Allocator, debug_trace_execution: bool) Self {
             var stack = ArrayList(Value).initCapacity(allocator, STACK_MAX) catch ArrayList(Value).init(allocator);
-            return Self{
-                .allocator = allocator,
-                .chunk = _chunk.init(allocator),
-                .debug_trace_execution = debug_trace_execution,
-                .stack = stack,
-            };
+            return Self{ .allocator = allocator, .chunk = _chunk.init(allocator), .debug_trace_execution = debug_trace_execution, .stack = stack };
         }
 
         fn read_byte(self: *Self) u8 {

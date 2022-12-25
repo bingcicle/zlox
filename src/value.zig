@@ -25,7 +25,7 @@ pub fn ValueArray() type {
         }
 
         fn growArray(self: *Self, new_capacity: usize) anyerror!void {
-            const new_memory = try self.allocator.reallocAtLeast(self.allocatedSlice(), new_capacity);
+            const new_memory = try self.allocator.realloc(self.allocatedSlice(), new_capacity);
             self.values.ptr = new_memory.ptr;
             self.capacity = new_memory.len;
         }
