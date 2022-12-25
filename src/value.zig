@@ -37,7 +37,7 @@ pub fn ValueArray() type {
         pub fn write(self: *Self, value: Value) anyerror!void {
             if (self.capacity < self.count + 1) {
                 var capacity = growCapacity(self.capacity) catch |err| {
-                    std.debug.print("ERR: {}", .{err});
+                    _ = err;
                     return;
                 };
                 try self.growArray(capacity);

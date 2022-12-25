@@ -8,6 +8,8 @@ const Chunk = @import("chunk.zig").Chunk;
 const Opcode = @import("opcode.zig").Opcode;
 const ArrayList = std.ArrayList;
 
+const compile = @import("compiler.zig").compile;
+
 pub const InterpretResult = enum(u8) {
     interpret_ok = 0x0,
     interpret_compile_error = 0x1,
@@ -42,10 +44,10 @@ pub fn VirtualMachine() type {
             return self.chunk.constants.values.ptr[self.read_byte()];
         }
 
-        pub fn interpret(self: *Self, chunk: anytype) !InterpretResult {
-            self.chunk = chunk;
-            self.ip = self.chunk.code.ptr;
-            return try self.run();
+        pub fn interpret(self: *Self, source: []const u8) !InterpretResult {
+            compile(source);
+            _ = self;
+            return InterpretResult.interpret_ok;
         }
 
         pub fn run(self: *Self) !InterpretResult {

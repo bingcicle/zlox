@@ -5,6 +5,9 @@ const debug = @import("debug.zig");
 const ValueArray = @import("value.zig").ValueArray;
 const Value = @import("value.zig").Value;
 const VirtualMachine = @import("vm.zig").VirtualMachine;
+const InterpretResult = @import("vm.zig").InterpretResult;
+
+const VM = VirtualMachine();
 
 pub fn growCapacity(capacity: usize) anyerror!usize {
     switch (capacity < 8) {
@@ -13,9 +16,36 @@ pub fn growCapacity(capacity: usize) anyerror!usize {
     }
 }
 
-pub fn main() anyerror!void {
-    std.log.info("All your codebase are belong to us.", .{});
+fn repl(vm: *VM, stdin: std.fs.File.Reader, stdout: std.fs.File.Writer) !void {
+    repl: while (true) {
+        try stdout.print("> ", .{});
+        const max_input = 1024;
+        var input_buffer: [max_input]u8 = undefined;
+        var input_str = (try stdin.readUntilDelimiterOrEof(input_buffer[0..], '\n')) orelse {
+            try stdout.print("\n", .{});
+            return;
+        };
 
-    const vm = VirtualMachine();
-    _ = vm.init(std.heap.page_allocator, false);
+        var result = try vm.interpret(input_str);
+        if (result == InterpretResult.interpret_ok) {
+            break :repl;
+        }
+    }
+}
+
+pub fn main() anyerror!void {
+    const stdin = std.io.getStdIn().reader();
+    const stdout = std.io.getStdOut().writer();
+
+    var gpa = std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = true }){};
+    defer {
+        //std.log.info("Used {} of memory.", .{std.fmt.fmtIntSizeDec(gpa.total_requested_bytes)});
+        _ = gpa.deinit();
+    }
+    var allocator = gpa.allocator();
+
+    var vm = VM.init(allocator, false);
+    defer vm.deinit();
+
+    try repl(&vm, stdin, stdout);
 }
