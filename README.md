@@ -6,6 +6,8 @@ A (currently incomplete) Zig implementation of the Lox bytecode VM as featured i
 
 Will be updating this repo as I complete each chapter, and with each new chapter I will create a new branch for it.
 
+Note that this likely to be poorly written Zig code and may not be as well-written, efficient, or optimized as it should be :S
+
 ### Motivations
 
 1. Learning how to implement a VM from scratch
