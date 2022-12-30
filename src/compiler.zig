@@ -9,14 +9,14 @@ pub fn compile(source: []const u8) void {
     compileLoop: while (true) {
         var token: Token = scanner.scanToken();
 
-        std.debug.print("scanned: {any}", .{token});
+        std.debug.print("scanned: {any}\n", .{token});
 
         if (std.meta.eql(token.type, TokenType.eof)) {
             break :compileLoop;
         }
     }
 
-    std.debug.print("compiled.\n", .{});
+    std.debug.print("\ncompiled.\n", .{});
 
     return;
 }
