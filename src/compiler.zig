@@ -2,21 +2,32 @@ const std = @import("std");
 const Scanner = @import("scanner.zig").Scanner;
 const Token = @import("token.zig").Token;
 const TokenType = @import("token.zig").TokenType;
+const Opcode = @import("opcode.zig").Opcode;
+const Value = @import("value.zig").Value;
+const Chunk = @import("chunk.zig").Chunk;
 
-pub fn compile(source: []const u8) void {
+const Parser = @import("Parser.zig");
+const ChunkType = Chunk();
+
+pub fn endCompiler(parser: *Parser) void {
+    parser.emitReturn();
+}
+
+pub fn compile(source: []const u8, chunk: anytype) bool {
     var scanner = Scanner().init(source);
 
-    compileLoop: while (true) {
-        var token: Token = scanner.scanToken();
+    var parser = Parser{
+        .current = null,
+        .previous = null,
+        .hadError = false,
+        .panicMode = false,
+        .compilingChunk = chunk,
+    };
 
-        std.debug.print("scanned: {any}\n", .{token});
+    parser.advance(&scanner);
+    //parser.expression();
+    parser.consume(&scanner, TokenType.eof, "Expect end of expression");
 
-        if (std.meta.eql(token.type, TokenType.eof)) {
-            break :compileLoop;
-        }
-    }
-
-    std.debug.print("\ncompiled.\n", .{});
-
-    return;
+    endCompiler(&parser);
+    return !parser.hadError;
 }

@@ -45,9 +45,16 @@ pub fn VirtualMachine() type {
         }
 
         pub fn interpret(self: *Self, source: []const u8) !InterpretResult {
-            compile(source);
-            _ = self;
-            return InterpretResult.interpret_ok;
+            var chunk = Chunk().init(self.allocator);
+
+            _ = compile(source, chunk);
+
+            self.chunk = chunk;
+            self.ip = self.chunk.code.ptr;
+
+            var result: InterpretResult = try self.run();
+
+            return result;
         }
 
         pub fn run(self: *Self) !InterpretResult {
@@ -139,6 +146,6 @@ test "interpret" {
         try chunk.writeChunk(@enumToInt(Opcode.op_negate), 123);
         try chunk.writeChunk(@enumToInt(Opcode.op_return), 123);
 
-        _ = try vm.interpret(chunk);
+        _ = try vm.interpret("hello world;");
     }
 }
