@@ -37,13 +37,13 @@ fn getRule(token_type: TokenType) ParseRule {
         TokenType.left_paren => ParseRule{
             .prefix = Fn{ .grouping = grouping },
             .infix = null,
-            .precedence = Precedence.None,
+            .precedence = Precedence.none,
         },
 
         TokenType.minus => ParseRule{
             .prefix = Fn{ .unary = unary },
             .infix = Fn{ .binary = binary },
-            .precedence = Precedence.None,
+            .precedence = Precedence.none,
         },
         TokenType.plus,
         TokenType.slash,
@@ -51,17 +51,17 @@ fn getRule(token_type: TokenType) ParseRule {
         => ParseRule{
             .prefix = null,
             .infix = Fn{ .binary = binary },
-            .precedence = Precedence.None,
+            .precedence = Precedence.none,
         },
         TokenType.number => ParseRule{
             .prefix = Fn{ .number = number },
             .infix = null,
-            .precedence = Precedence.None,
+            .precedence = Precedence.none,
         },
         else => ParseRule{
             .prefix = null,
             .infix = null,
-            .precedence = Precedence.None,
+            .precedence = Precedence.none,
         },
     };
 }
@@ -102,7 +102,7 @@ pub fn number(self: *Parser) !void {
 }
 
 pub fn expression(self: *Parser) void {
-    self.parsePrecedence(Precedence.Assignment);
+    self.parsePrecedence(Precedence.assignment);
 }
 
 pub fn parsePrecedence(self: *Parser, precedence: Precedence) void {
@@ -152,9 +152,10 @@ pub fn binary(self: *Parser) !void {
 pub fn unary(self: *Parser) !void {
     if (self.previous) |safe_previous| {
         var operator_type: TokenType = safe_previous.type;
+        std.debug.print("\n-- OK --\n {any}\n", .{self.previous});
 
         // Compile the operand.
-        self.parsePrecedence(Precedence.Unary);
+        self.parsePrecedence(Precedence.unary);
 
         switch (operator_type) {
             TokenType.minus => {

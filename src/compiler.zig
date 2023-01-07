@@ -36,17 +36,17 @@ pub fn compile(source: []const u8, chunk: *Chunk) !bool {
 }
 
 pub const Precedence = enum(u16) {
-    None = 0x0,
-    Assignment = 0x1, // =
-    Or = 0x2, // or
-    And = 0x3, // and
-    Equality = 0x4, // == !=
-    Comparison = 0x5, // < > <= >=
-    Term = 0x6, // + =
-    Factor = 0x7, // * /
-    Unary = 0x8, // ! -
-    Call = 0x9, // . ()
-    Primary = 0x10,
+    none = 0x0,
+    assignment = 0x1, // =
+    _or = 0x2, // or
+    _and = 0x3, // and
+    equality = 0x4, // == !=
+    comparison = 0x5, // < > <= >=
+    term = 0x6, // + =
+    factor = 0x7, // * /
+    unary = 0x8, // ! -
+    call = 0x9, // . ()
+    primary = 0x10,
 };
 
 test "compile" {
