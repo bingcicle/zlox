@@ -51,18 +51,19 @@ pub fn VirtualMachine() type {
         pub fn interpret(self: *Self, source: []const u8) !InterpretResult {
             var chunk = Chunk.init(self.allocator);
 
-            var had_error = try compile(source, chunk);
+            // compile() returns false if an error occurred.
+            var had_error = try compile(source, &chunk);
 
             if (!had_error) {
                 return InterpretResult.interpret_compile_error;
             }
 
             self.chunk = chunk;
-            self.ip = self.chunk.code.ptr;
-
-            std.debug.print("chunk: {any}", .{self.chunk});
+            self.ip = chunk.code.ptr;
 
             var result: InterpretResult = try self.run();
+
+            chunk.deinit();
 
             return result;
         }
@@ -87,7 +88,6 @@ pub fn VirtualMachine() type {
                 switch (opcode) {
                     Opcode.op_return => {
                         debug.printValue(self.pop());
-                        std.debug.print("\n", .{});
                         return InterpretResult.interpret_ok;
                     },
                     Opcode.op_constant => {

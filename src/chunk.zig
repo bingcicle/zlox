@@ -25,7 +25,7 @@ pub fn init(allocator: Allocator) Chunk {
 pub fn writeChunk(chunk: *Chunk, byte: u8, line: u8) anyerror!void {
     if (chunk.capacity < chunk.count + 1) {
         var capacity = growCapacity(chunk.capacity) catch |err| {
-            std.debug.print("ERR: {}", .{err});
+            std.debug.print("Error: {}", .{err});
             return;
         };
         try chunk.growArray(capacity);

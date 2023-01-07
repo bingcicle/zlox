@@ -1,6 +1,6 @@
 const std = @import("std");
 const Opcode = @import("opcode.zig").Opcode;
-const Chunk = @import("main.zig").Chunk;
+const Chunk = @import("chunk.zig");
 const WriteError = std.os.WriteError;
 const Value = @import("value.zig").Value;
 
@@ -55,7 +55,7 @@ pub fn disassembleInstruction(chunk: anytype, offset: usize) usize {
     }
 }
 
-pub fn disassembleChunk(chunk: anytype, name: []const u8, writer: anytype) WriteError!void {
+pub fn disassembleChunk(chunk: *Chunk, name: []const u8, writer: anytype) WriteError!void {
     _ = try writer.print("\n== {s} ==\n", .{name});
 
     var offset: usize = 0;
