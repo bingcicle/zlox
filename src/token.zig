@@ -127,5 +127,5 @@ pub const Token = struct {
     type: TokenType,
     start: usize,
     length: usize,
-    line: usize,
+    line: u8,
 };
