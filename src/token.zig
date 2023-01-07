@@ -1,5 +1,5 @@
 const std = @import("std");
-const Scanner = @import("scanner.zig");
+const Scanner = @import("Scanner.zig");
 
 pub const TokenType = enum {
     const Self = @This();

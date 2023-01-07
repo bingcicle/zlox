@@ -1,5 +1,5 @@
 const std = @import("std");
-const Scanner = @import("scanner.zig").Scanner;
+const Scanner = @import("Scanner.zig");
 const Token = @import("token.zig").Token;
 const TokenType = @import("token.zig").TokenType;
 const Opcode = @import("opcode.zig").Opcode;
@@ -14,7 +14,7 @@ pub fn endCompiler(parser: *Parser) !void {
 }
 
 pub fn compile(source: []const u8, chunk: Chunk) !bool {
-    var scanner = Scanner().init(source);
+    var scanner = Scanner.init(source);
 
     var parser = Parser{
         .current = null,
@@ -22,11 +22,12 @@ pub fn compile(source: []const u8, chunk: Chunk) !bool {
         .had_error = false,
         .panic_mode = false,
         .compiling_chunk = chunk,
+        .scanner = scanner,
     };
 
-    parser.advance(&scanner);
+    parser.advance();
     parser.expression();
-    parser.consume(&scanner, TokenType.eof, "Expect end of expression");
+    parser.consume(TokenType.eof, "Expect end of expression");
 
     try endCompiler(&parser);
     return !parser.had_error;
