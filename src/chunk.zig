@@ -1,3 +1,5 @@
+const Chunk = @This();
+
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const testing = std.testing;
@@ -7,68 +9,62 @@ const Value = @import("value.zig").Value;
 const growCapacity = @import("main.zig").growCapacity;
 const Opcode = @import("opcode.zig").Opcode;
 
-pub fn Chunk() type {
-    return struct {
-        const Self = @This();
+const Constants = ValueArray();
 
-        const Constants = ValueArray();
+count: usize = 0,
+capacity: usize = 0,
+code: []u8 = &[_]u8{},
+lines: []u8 = &[_]u8{},
+constants: Constants,
+allocator: Allocator,
 
-        count: usize = 0,
-        capacity: usize = 0,
-        code: []u8 = &[_]u8{},
-        lines: []u8 = &[_]u8{},
-        constants: Constants,
-        allocator: Allocator,
+pub fn init(allocator: Allocator) Chunk {
+    return Chunk{ .allocator = allocator, .constants = Constants.init(allocator) };
+}
 
-        pub fn init(allocator: Allocator) Self {
-            return Self{ .allocator = allocator, .constants = Constants.init(allocator) };
-        }
+pub fn writeChunk(chunk: *Chunk, byte: u8, line: u8) anyerror!void {
+    if (chunk.capacity < chunk.count + 1) {
+        var capacity = growCapacity(chunk.capacity) catch |err| {
+            std.debug.print("ERR: {}", .{err});
+            return;
+        };
+        try chunk.growArray(capacity);
+    }
 
-        pub fn writeChunk(chunk: *Self, byte: u8, line: u8) anyerror!void {
-            if (chunk.capacity < chunk.count + 1) {
-                var capacity = growCapacity(chunk.capacity) catch |err| {
-                    std.debug.print("ERR: {}", .{err});
-                    return;
-                };
-                try chunk.growArray(capacity);
-            }
+    chunk.capacity = 8;
+    chunk.code.ptr[chunk.count] = byte;
+    chunk.lines.ptr[chunk.count] = line;
+    chunk.count += 1;
+}
 
-            chunk.capacity = 8;
-            chunk.code.ptr[chunk.count] = byte;
-            chunk.lines.ptr[chunk.count] = line;
-            chunk.count += 1;
-        }
+fn growArray(self: *Chunk, new_capacity: usize) anyerror!void {
+    const new_code_memory = try self.allocator.realloc(self.code.ptr[0..self.capacity], new_capacity);
+    const new_lines_memory = try self.allocator.realloc(self.lines.ptr[0..self.capacity], new_capacity);
+    self.code.ptr = new_code_memory.ptr;
+    self.lines.ptr = new_lines_memory.ptr;
+    self.capacity = new_code_memory.len;
+}
 
-        fn growArray(self: *Self, new_capacity: usize) anyerror!void {
-            const new_code_memory = try self.allocator.realloc(self.code.ptr[0..self.capacity], new_capacity);
-            const new_lines_memory = try self.allocator.realloc(self.lines.ptr[0..self.capacity], new_capacity);
-            self.code.ptr = new_code_memory.ptr;
-            self.lines.ptr = new_lines_memory.ptr;
-            self.capacity = new_code_memory.len;
-        }
+pub fn allocatedSlice(self: Chunk) []u8 {
+    return self.code.ptr[0..self.capacity];
+}
 
-        pub fn allocatedSlice(self: Self) []u8 {
-            return self.code.ptr[0..self.capacity];
-        }
+pub fn addConstant(self: *Chunk, value: Value) anyerror!u8 {
+    try self.constants.write(value);
+    return @truncate(u8, self.constants.count - 1);
+}
 
-        pub fn addConstant(self: *Self, value: Value) anyerror!u8 {
-            try self.constants.write(value);
-            return @truncate(u8, self.constants.count - 1);
-        }
-
-        /// Release all allocated memory.
-        pub fn deinit(self: *Self) void {
-            self.allocator.free(self.code.ptr[0..self.capacity]);
-            self.allocator.free(self.lines.ptr[0..self.capacity]);
-            self.constants.deinit();
-            self.* = undefined;
-        }
-    };
+/// Release all allocated memory.
+pub fn deinit(self: *Chunk) void {
+    self.allocator.free(self.code.ptr[0..self.capacity]);
+    self.allocator.free(self.lines.ptr[0..self.capacity]);
+    self.constants.deinit();
+    self.* = undefined;
 }
 
 test "init" {
     {
-        var basicChunk = Chunk().init(testing.allocator);
+        var basicChunk = Chunk.init(testing.allocator);
         defer basicChunk.deinit();
 
         try std.testing.expect(basicChunk.capacity == 0);
@@ -78,7 +74,7 @@ test "init" {
 
 test "writeChunk" {
     {
-        var basicChunk = Chunk().init(testing.allocator);
+        var basicChunk = Chunk.init(testing.allocator);
         defer basicChunk.deinit();
 
         try std.testing.expect(basicChunk.capacity == 0);
@@ -93,7 +89,7 @@ test "writeChunk" {
 
 test "disassembleChunk" {
     {
-        var basicChunk = Chunk().init(testing.allocator);
+        var basicChunk = Chunk.init(testing.allocator);
         defer basicChunk.deinit();
 
         try std.testing.expect(basicChunk.capacity == 0);
@@ -112,7 +108,7 @@ test "disassembleChunk" {
 
 test "addConstant" {
     {
-        var basicChunk = Chunk().init(testing.allocator);
+        var basicChunk = Chunk.init(testing.allocator);
         defer basicChunk.deinit();
 
         try std.testing.expect(basicChunk.capacity == 0);
@@ -128,7 +124,7 @@ test "addConstant" {
 
 test "writeChunk: constant" {
     {
-        var basicChunk = Chunk().init(testing.allocator);
+        var basicChunk = Chunk.init(testing.allocator);
         defer basicChunk.deinit();
 
         try std.testing.expect(basicChunk.capacity == 0);
