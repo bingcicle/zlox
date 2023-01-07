@@ -11,7 +11,7 @@ pub fn Scanner() type {
         source: []const u8,
         start: usize,
         current: usize,
-        line: usize,
+        line: u8,
 
         pub fn init(source: []const u8) Self {
             return Self{
