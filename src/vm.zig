@@ -4,7 +4,7 @@ const testing = std.testing;
 const debug = @import("debug.zig");
 const ValueArray = @import("value.zig").ValueArray;
 const Value = @import("value.zig").Value;
-const Chunk = @import("chunk.zig").Chunk;
+const Chunk = @import("chunk.zig");
 const Opcode = @import("opcode.zig").Opcode;
 const ArrayList = std.ArrayList;
 
@@ -22,16 +22,20 @@ pub fn VirtualMachine() type {
     return struct {
         const Self = @This();
 
-        const _chunk = Chunk();
         allocator: Allocator,
-        chunk: _chunk,
+        chunk: Chunk,
         debug_trace_execution: bool = false,
         stack: ArrayList(Value),
         ip: [*]u8 = undefined,
 
         pub fn init(allocator: Allocator, debug_trace_execution: bool) Self {
             var stack = ArrayList(Value).initCapacity(allocator, STACK_MAX) catch ArrayList(Value).init(allocator);
-            return Self{ .allocator = allocator, .chunk = _chunk.init(allocator), .debug_trace_execution = debug_trace_execution, .stack = stack };
+            return Self{
+                .allocator = allocator,
+                .chunk = Chunk.init(allocator),
+                .debug_trace_execution = debug_trace_execution,
+                .stack = stack,
+            };
         }
 
         fn read_byte(self: *Self) u8 {
@@ -45,9 +49,23 @@ pub fn VirtualMachine() type {
         }
 
         pub fn interpret(self: *Self, source: []const u8) !InterpretResult {
-            compile(source);
-            _ = self;
-            return InterpretResult.interpret_ok;
+            var chunk = Chunk.init(self.allocator);
+
+            // compile() returns false if an error occurred.
+            var had_error = try compile(source, &chunk);
+
+            if (!had_error) {
+                return InterpretResult.interpret_compile_error;
+            }
+
+            self.chunk = chunk;
+            self.ip = chunk.code.ptr;
+
+            var result: InterpretResult = try self.run();
+
+            chunk.deinit();
+
+            return result;
         }
 
         pub fn run(self: *Self) !InterpretResult {
@@ -70,7 +88,6 @@ pub fn VirtualMachine() type {
                 switch (opcode) {
                     Opcode.op_return => {
                         debug.printValue(self.pop());
-                        std.debug.print("\n", .{});
                         return InterpretResult.interpret_ok;
                     },
                     Opcode.op_constant => {
@@ -115,7 +132,7 @@ pub fn VirtualMachine() type {
 
 test "interpret" {
     {
-        var chunk = Chunk().init(testing.allocator);
+        var chunk = Chunk.init(testing.allocator);
         var vm = VirtualMachine().init(testing.allocator, true);
         defer chunk.deinit();
         defer vm.deinit();
@@ -139,6 +156,6 @@ test "interpret" {
         try chunk.writeChunk(@enumToInt(Opcode.op_negate), 123);
         try chunk.writeChunk(@enumToInt(Opcode.op_return), 123);
 
-        _ = try vm.interpret(chunk);
+        _ = try vm.interpret("var a = 2;");
     }
 }

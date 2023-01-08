@@ -1,7 +1,5 @@
 const std = @import("std");
-const Scanner = @import("scanner.zig").Scanner;
-
-const S = Scanner();
+const Scanner = @import("Scanner.zig");
 
 pub const TokenType = enum {
     const Self = @This();
@@ -56,7 +54,7 @@ pub const TokenType = enum {
     eof,
 
     fn checkKeyword(
-        scanner: *S,
+        scanner: *Scanner,
         start: usize,
         length: usize,
         rest: []const u8,
@@ -73,7 +71,7 @@ pub const TokenType = enum {
         return Self.identifier;
     }
 
-    pub fn identifierType(scanner: *S) Self {
+    pub fn identifierType(scanner: *Scanner) Self {
         return switch (scanner.source[scanner.start]) {
             'a' => checkKeyword(scanner, 1, 2, &"nd".*, Self._and),
             'c' => checkKeyword(scanner, 1, 4, &"lass".*, Self.class),
@@ -127,5 +125,5 @@ pub const Token = struct {
     type: TokenType,
     start: usize,
     length: usize,
-    line: usize,
+    line: u8,
 };
