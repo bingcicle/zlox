@@ -33,6 +33,14 @@ pub const Value = struct {
     pub fn isBool(self: Value) bool {
         return self.type == .bool;
     }
+
+    pub fn isNumber(self: Value) bool {
+        return self.type == .number;
+    }
+
+    pub fn isNil(self: Value) bool {
+        return self.type == .nil;
+    }
 };
 
 pub const ValueTypeTag = packed union { bool: bool, nil: void, number: f64 };
