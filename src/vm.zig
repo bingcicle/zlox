@@ -13,9 +13,9 @@ const Parser = @import("Parser.zig");
 const Compiler = @import("Compiler.zig");
 
 pub const InterpretResult = enum(u8) {
-    interpret_ok = 0x0,
-    interpret_compile_error = 0x1,
-    interpret_runtime_error = 0x2,
+    ok,
+    compile_error,
+    runtime_error,
 };
 
 pub const STACK_MAX: u8 = 255;
@@ -68,7 +68,7 @@ pub fn VirtualMachine() type {
             var had_error = try compiler.compile(&parser);
 
             if (!had_error) {
-                return InterpretResult.interpret_compile_error;
+                return InterpretResult.compile_error;
             }
 
             self.chunk = chunk;
@@ -99,7 +99,7 @@ pub fn VirtualMachine() type {
                 switch (opcode) {
                     Opcode.op_return => {
                         debug.printValue(self.pop());
-                        return InterpretResult.interpret_ok;
+                        return InterpretResult.ok;
                     },
                     Opcode.op_constant => {
                         var constant = self.read_constant();
@@ -126,9 +126,11 @@ pub fn VirtualMachine() type {
                         continue;
                     },
                     Opcode.op_negate => {
-                        var value = self.pop();
-                        value.data.number *= -1.0;
-                        _ = try self.push(value);
+                        if (self.stack.items.len > 0 and !Value.isNumber(self.stack.items[0])) {
+                            std.debug.print("Operand must be a number.", .{});
+                            return InterpretResult.runtime_error;
+                        }
+                        _ = try self.push(Value.newNumber(-Value.asNumber(self.pop())));
                         continue;
                     },
                 }
@@ -145,6 +147,10 @@ pub fn VirtualMachine() type {
 
         pub fn push(self: *Self, value: Value) !void {
             try self.stack.append(value);
+        }
+
+        pub fn peek(self: *Self) Value {
+            return self.stack.pop();
         }
 
         pub fn pop(self: *Self) Value {

@@ -26,7 +26,7 @@ fn repl(vm: *VM, stdin: std.fs.File.Reader, stdout: std.fs.File.Writer) !void {
         };
 
         var result = try vm.interpret(input);
-        if (result == InterpretResult.interpret_ok) {
+        if (result == InterpretResult.ok) {
             break :repl;
         }
     }
@@ -56,5 +56,5 @@ test "smoke test" {
     var input = "(5 - (3 - 1)) + -1;";
 
     var result = try vm.interpret(input);
-    try std.testing.expectEqual(result, InterpretResult.interpret_ok);
+    try std.testing.expectEqual(result, InterpretResult.ok);
 }
