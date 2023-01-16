@@ -7,8 +7,10 @@ const Value = @import("value.zig").Value;
 const Chunk = @import("chunk.zig");
 const Opcode = @import("opcode.zig").Opcode;
 const ArrayList = std.ArrayList;
+const Scanner = @import("Scanner.zig");
+const Parser = @import("Parser.zig");
 
-const compile = @import("compiler.zig").compile;
+const Compiler = @import("Compiler.zig");
 
 pub const InterpretResult = enum(u8) {
     interpret_ok = 0x0,
@@ -32,7 +34,7 @@ pub fn VirtualMachine() type {
             var stack = ArrayList(Value).initCapacity(allocator, STACK_MAX) catch ArrayList(Value).init(allocator);
             return Self{
                 .allocator = allocator,
-                .chunk = Chunk.init(allocator),
+                .chunk = undefined,
                 .debug_trace_execution = debug_trace_execution,
                 .stack = stack,
             };
@@ -49,10 +51,21 @@ pub fn VirtualMachine() type {
         }
 
         pub fn interpret(self: *Self, source: []const u8) !InterpretResult {
+            var scanner = Scanner.init(source);
             var chunk = Chunk.init(self.allocator);
 
+            var parser = Parser{
+                .current = null,
+                .previous = null,
+                .had_error = false,
+                .panic_mode = false,
+                .compiling_chunk = &chunk,
+                .scanner = &scanner,
+            };
+
             // compile() returns false if an error occurred.
-            var had_error = try compile(source, &chunk);
+            var compiler = Compiler{};
+            var had_error = try compiler.compile(&parser);
 
             if (!had_error) {
                 return InterpretResult.interpret_compile_error;
@@ -62,8 +75,6 @@ pub fn VirtualMachine() type {
             self.ip = chunk.code.ptr;
 
             var result: InterpretResult = try self.run();
-
-            chunk.deinit();
 
             return result;
         }
@@ -92,20 +103,31 @@ pub fn VirtualMachine() type {
                     },
                     Opcode.op_constant => {
                         var constant = self.read_constant();
-                        debug.printValue(constant);
                         _ = try self.push(constant);
                         continue;
                     },
+                    Opcode.op_nil => {
+                        _ = try self.push(Value.newNil());
+                        continue;
+                    },
+                    Opcode.op_true => {
+                        _ = try self.push(Value.newBool(true));
+                        continue;
+                    },
+                    Opcode.op_false => {
+                        _ = try self.push(Value.newBool(false));
+                        continue;
+                    },
                     Opcode.op_add, Opcode.op_subtract, Opcode.op_multiply, Opcode.op_divide => {
-                        var b: f64 = self.pop().data;
-                        var a: f64 = self.pop().data;
+                        var b: f64 = Value.asNumber(self.pop());
+                        var a: f64 = Value.asNumber(self.pop());
                         const value = try Opcode.handleBinaryOp(opcode, a, b);
                         _ = try self.push(value);
                         continue;
                     },
                     Opcode.op_negate => {
                         var value = self.pop();
-                        value.data *= -1.0;
+                        value.data.number *= -1.0;
                         _ = try self.push(value);
                         continue;
                     },
@@ -117,6 +139,7 @@ pub fn VirtualMachine() type {
 
         pub fn deinit(self: *Self) void {
             self.stack.deinit();
+            self.chunk.deinit();
             self.* = undefined;
         }
 
@@ -128,34 +151,4 @@ pub fn VirtualMachine() type {
             return self.stack.pop();
         }
     };
-}
-
-test "interpret" {
-    {
-        var chunk = Chunk.init(testing.allocator);
-        var vm = VirtualMachine().init(testing.allocator, true);
-        defer chunk.deinit();
-        defer vm.deinit();
-
-        var idx = try chunk.addConstant(Value{ .data = 1.2 });
-        try chunk.writeChunk(@enumToInt(Opcode.op_constant), 123);
-        try chunk.writeChunk(idx, 123);
-
-        idx = try chunk.addConstant(Value{ .data = 3.4 });
-        try chunk.writeChunk(@enumToInt(Opcode.op_constant), 123);
-        try chunk.writeChunk(idx, 123);
-
-        try chunk.writeChunk(@enumToInt(Opcode.op_add), 123);
-
-        idx = try chunk.addConstant(Value{ .data = 5.6 });
-        try chunk.writeChunk(@enumToInt(Opcode.op_constant), 123);
-        try chunk.writeChunk(idx, 123);
-
-        try chunk.writeChunk(@enumToInt(Opcode.op_divide), 123);
-
-        try chunk.writeChunk(@enumToInt(Opcode.op_negate), 123);
-        try chunk.writeChunk(@enumToInt(Opcode.op_return), 123);
-
-        _ = try vm.interpret("var a = 2;");
-    }
 }

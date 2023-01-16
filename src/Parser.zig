@@ -7,7 +7,7 @@ const TokenType = @import("token.zig").TokenType;
 const Opcode = @import("opcode.zig").Opcode;
 const Value = @import("value.zig").Value;
 const Chunk = @import("chunk.zig");
-const Precedence = @import("compiler.zig").Precedence;
+const Precedence = @import("Compiler.zig").Precedence;
 const Scanner = @import("Scanner.zig");
 
 current: ?Token,
@@ -15,46 +15,57 @@ previous: ?Token,
 had_error: bool,
 panic_mode: bool,
 compiling_chunk: *Chunk,
-scanner: Scanner,
-
-const TokenToParseRule = struct { TokenType, ParseRule };
-
-const Fn = union {
-    grouping: ?*const fn (*Parser) anyerror!void,
-    number: ?*const fn (*Parser) anyerror!void,
-    unary: ?*const fn (*Parser) anyerror!void,
-    binary: ?*const fn (*Parser) anyerror!void,
-};
+scanner: *Scanner,
 
 const ParseRule = struct {
-    prefix: ?Fn,
-    infix: ?Fn,
+    prefix: ?*const fn (*Parser) anyerror!void,
+    infix: ?*const fn (*Parser) anyerror!void,
     precedence: Precedence,
 };
 
 fn getRule(token_type: TokenType) ParseRule {
     return switch (token_type) {
         TokenType.left_paren => ParseRule{
-            .prefix = Fn{ .grouping = grouping },
+            .prefix = grouping,
             .infix = null,
             .precedence = Precedence.none,
         },
 
         TokenType.minus => ParseRule{
-            .prefix = Fn{ .unary = unary },
-            .infix = Fn{ .binary = binary },
-            .precedence = Precedence.none,
+            .prefix = unary,
+            .infix = binary,
+            .precedence = Precedence.term,
         },
-        TokenType.plus,
+        TokenType.plus => ParseRule{
+            .prefix = null,
+            .infix = binary,
+            .precedence = Precedence.term,
+        },
         TokenType.slash,
         TokenType.star,
         => ParseRule{
             .prefix = null,
-            .infix = Fn{ .binary = binary },
-            .precedence = Precedence.none,
+            .infix = binary,
+            .precedence = Precedence.factor,
         },
         TokenType.number => ParseRule{
-            .prefix = Fn{ .number = number },
+            .prefix = number,
+            .infix = null,
+            .precedence = Precedence.none,
+        },
+        TokenType.false => ParseRule{
+            .prefix = literal,
+            .infix = null,
+            .precedence = Precedence.none,
+        },
+        TokenType.true => ParseRule{
+            .prefix = literal,
+            .infix = null,
+            .precedence = Precedence.none,
+        },
+
+        TokenType.nil => ParseRule{
+            .prefix = literal,
             .infix = null,
             .precedence = Precedence.none,
         },
@@ -65,16 +76,6 @@ fn getRule(token_type: TokenType) ParseRule {
         },
     };
 }
-
-test "parse precedence expects prefix parser" {
-    {
-        const prefix = getRule(TokenType.left_paren).prefix;
-        if (prefix) |safe_prefix| {
-            try std.testing.expectEqual(@TypeOf(safe_prefix), Parser.Fn);
-        }
-    }
-}
-
 pub fn makeConstant(self: *Parser, value: Value) !u8 {
     var constant = try self.compiling_chunk.addConstant(value);
     if (constant > 255) {
@@ -89,55 +90,71 @@ pub fn errorAtCurrent(self: *Parser, msg: []const u8) void {
     self.panic_mode = true;
 
     if (self.current) |safe_current| {
-        errorAt(safe_current, msg);
+        self.errorAt(safe_current, msg);
     }
 }
 
 pub fn number(self: *Parser) !void {
     if (self.previous) |safe_previous| {
-        var value: Value = Value{ .data = @intToFloat(f64, safe_previous.start) };
-
-        try self.emitConstant(value);
+        var string = self.scanner.source[safe_previous.start..(safe_previous.start + safe_previous.length)];
+        try self.emitConstant(Value.newNumber(try std.fmt.parseFloat(f64, string)));
     }
 }
 
-pub fn expression(self: *Parser) void {
-    self.parsePrecedence(Precedence.assignment);
+pub fn literal(self: *Parser) !void {
+    if (self.previous) |safe_previous| {
+        switch (safe_previous.type) {
+            TokenType.false => try self.emitByte(@enumToInt(Opcode.op_false)),
+            TokenType.nil => try self.emitByte(@enumToInt(Opcode.op_nil)),
+            TokenType.true => try self.emitByte(@enumToInt(Opcode.op_true)),
+            else => unreachable,
+        }
+    }
 }
 
-pub fn parsePrecedence(self: *Parser, precedence: Precedence) void {
+pub fn expression(self: *Parser) !void {
+    try self.parsePrecedence(Precedence.assignment);
+}
+
+pub fn parsePrecedence(self: *Parser, precedence: Precedence) !void {
     self.advance();
 
     if (self.previous) |safe_previous| {
         var prefixRule = getRule(safe_previous.type).prefix;
+
         if (prefixRule) |safeRule| {
-            _ = safeRule;
+            try @call(.auto, safeRule, .{self});
+        } else {
+            self.parserError("Expect expression.");
+            return;
         }
 
         if (self.current) |safe_current| {
             while (@enumToInt(precedence) <= @enumToInt(getRule(safe_current.type).precedence)) {
                 self.advance();
-                var infixRule = getRule(safe_previous.type).infix;
-                _ = infixRule;
+                if (self.previous) |inner_safe_previous| {
+                    var infixRule = getRule(inner_safe_previous.type).infix;
+                    if (infixRule) |safeInfix| {
+                        try @call(.auto, safeInfix, .{self});
+                    } else {
+                        break;
+                    }
+                }
             }
         }
-    } else {
-        self.parserError("Expect expression.");
-        return;
     }
 }
 
 pub fn grouping(self: *Parser) !void {
-    self.expression();
+    try self.expression();
     self.consume(TokenType.right_paren, "Expect ')' after expression.");
 }
 
 pub fn binary(self: *Parser) !void {
     if (self.previous) |safe_previous| {
         var operator_type: TokenType = safe_previous.type;
-
         var rule = getRule(operator_type);
-        self.parsePrecedence(rule.precedence);
+        try self.parsePrecedence(@intToEnum(Precedence, @enumToInt(rule.precedence) + 1));
 
         return switch (operator_type) {
             TokenType.plus => self.emitByte(@enumToInt(Opcode.op_add)),
@@ -152,17 +169,14 @@ pub fn binary(self: *Parser) !void {
 pub fn unary(self: *Parser) !void {
     if (self.previous) |safe_previous| {
         var operator_type: TokenType = safe_previous.type;
-        std.debug.print("\n-- OK --\n {any}\n", .{self.previous});
 
         // Compile the operand.
-        self.parsePrecedence(Precedence.unary);
+        try self.parsePrecedence(Precedence.unary);
 
-        switch (operator_type) {
-            TokenType.minus => {
-                return try self.emitByte(@enumToInt(Opcode.op_negate));
-            },
+        return switch (operator_type) {
+            TokenType.minus => self.emitByte(@enumToInt(Opcode.op_negate)),
             else => unreachable,
-        }
+        };
     }
 }
 
@@ -189,7 +203,7 @@ test "unary" {
         .had_error = false,
         .panic_mode = false,
         .compiling_chunk = &chunk,
-        .scanner = scanner,
+        .scanner = &scanner,
     };
 
     try parser.unary();
@@ -201,13 +215,13 @@ test "unary" {
 
 pub fn consume(self: *Parser, token_type: TokenType, msg: []const u8) void {
     if (self.current) |safe_current| {
-        if (safe_current.type == token_type) {
+        if (std.meta.eql(safe_current.type, token_type)) {
             self.advance();
             return;
         }
-    }
 
-    self.errorAtCurrent(msg);
+        self.errorAtCurrent(msg);
+    }
 }
 
 pub fn emitReturn(self: *Parser) anyerror!void {
@@ -216,7 +230,7 @@ pub fn emitReturn(self: *Parser) anyerror!void {
 
 pub fn emitByte(self: *Parser, byte: u8) anyerror!void {
     if (self.previous) |safe_previous| {
-        _ = try self.compiling_chunk.writeChunk(byte, safe_previous.line);
+        try self.compiling_chunk.writeChunk(byte, safe_previous.line);
     }
 }
 
@@ -236,33 +250,57 @@ pub fn emitConstant(self: *Parser, value: Value) !void {
 pub fn advance(self: *Parser) void {
     self.previous = self.current;
 
-    advanceLoop: while (true) {
+    while (true) {
         self.current = self.scanner.scanToken();
 
         if (self.current) |safe_current| {
             if (safe_current.type != TokenType.err) {
-                break :advanceLoop;
+                break;
             }
         }
 
-        self.errorAtCurrent("error");
+        self.errorAtCurrent("ok");
     }
 }
 
 pub fn parserError(self: *Parser, msg: []const u8) void {
     if (self.previous) |safe_previous| {
-        errorAt(safe_previous, msg);
+        self.errorAt(safe_previous, msg);
     }
 }
 
-pub fn errorAt(token: Token, msg: []const u8) void {
+pub fn errorAt(self: *Parser, token: Token, msg: []const u8) void {
+    if (self.panic_mode) return;
+    self.panic_mode = true;
     std.debug.print("[line {d}] Error", .{token.line});
 
     switch (token.type) {
         TokenType.eof => std.debug.print(" at end", .{}),
         TokenType.err => {},
-        else => std.debug.print(" at {d} {d}", .{ token.length, token.start }),
+        else => std.debug.print(" at {d} {d}", .{ token.start, token.start + token.length }),
     }
 
     std.debug.print(": {s}\n", .{msg});
+    self.had_error = true;
+}
+
+test "Parser" {
+    const allocator = std.testing.allocator;
+    var source = "var x = 1;";
+    var scanner = Scanner.init(source);
+    var chunk = Chunk.init(allocator);
+
+    defer chunk.deinit();
+
+    var parser = Parser{
+        .current = null,
+        .previous = null,
+        .had_error = false,
+        .panic_mode = false,
+        .compiling_chunk = &chunk,
+        .scanner = &scanner,
+    };
+    const writer = std.io.getStdOut().writer();
+
+    try debug.disassembleChunk(parser.compiling_chunk, "test \"Parser\"", writer);
 }

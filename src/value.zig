@@ -4,7 +4,48 @@ const testing = std.testing;
 
 const growCapacity = @import("main.zig").growCapacity;
 
-pub const Value = struct { data: f64 };
+pub const Value = struct {
+    type: Type,
+    data: ValueTypeTag,
+
+    pub const Type = enum { bool, nil, number };
+
+    pub fn newBool(value: bool) Value {
+        return Value{ .type = Value.Type.bool, .data = ValueTypeTag{ .bool = value } };
+    }
+
+    pub fn newNil() Value {
+        return Value{ .type = Value.Type.nil, .data = ValueTypeTag{ .number = 0 } };
+    }
+
+    pub fn newNumber(value: f64) Value {
+        return Value{ .type = Value.Type.number, .data = ValueTypeTag{ .number = value } };
+    }
+
+    pub fn asBool(self: Value) bool {
+        return @as(bool, self.data.bool);
+    }
+
+    pub fn asNumber(self: Value) f64 {
+        return @as(f64, self.data.number);
+    }
+
+    pub fn isBool(self: Value) bool {
+        return self.type == .bool;
+    }
+};
+
+pub const ValueTypeTag = packed union { bool: bool, nil: void, number: f64 };
+
+test "ValueType" {
+    var v = Value.newBool(true);
+    //var v = Value{ .type = Value.Type.bool, .data = ValueTypeTag{ .bool = true } };
+    //std.debug.print("{d}\n", .{@typeInfo(@TypeOf(v))});
+    //std.debug.print("{any}\n", .{@sizeOf(u16)});
+    try std.testing.expectEqual(16, @sizeOf(@TypeOf(v)));
+    try std.testing.expect(v.asBool());
+    try std.testing.expect(v.isBool());
+}
 
 pub fn ValueArray() type {
     return struct {
@@ -56,10 +97,10 @@ test "writeValue" {
         try std.testing.expect(values.capacity == 0);
         try std.testing.expect(values.count == 0);
 
-        var value = Value{ .data = 4.20 };
+        var value = Value.newNumber(4.2);
         try values.write(value);
 
-        try std.testing.expect(values.values.ptr[0].data == 4.20);
+        try std.testing.expect(values.values.ptr[0].data.number == 4.20);
         try std.testing.expect(values.capacity == 8);
         try std.testing.expect(values.count == 1);
     }

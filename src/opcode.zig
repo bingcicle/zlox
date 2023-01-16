@@ -13,16 +13,19 @@ pub const Opcode = enum(u8) {
     op_multiply = 0x4,
     op_divide = 0x5,
     op_negate = 0x6,
+    op_nil = 0x7,
+    op_true = 0x8,
+    op_false = 0x9,
 
     pub fn handleBinaryOp(self: Opcode, a: f64, b: f64) !Value {
-        const value = switch (self) {
-            Opcode.op_add => Value{ .data = a + b },
-            Opcode.op_subtract => Value{ .data = a - b },
-            Opcode.op_multiply => Value{ .data = a * b },
-            Opcode.op_divide => Value{ .data = a / b },
+        var result = switch (self) {
+            Opcode.op_add => a + b,
+            Opcode.op_subtract => a - b,
+            Opcode.op_multiply => a * b,
+            Opcode.op_divide => a / b,
             else => return error.InvalidOpcode,
         };
 
-        return value;
+        return Value.newNumber(result);
     }
 };

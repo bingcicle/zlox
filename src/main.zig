@@ -18,15 +18,14 @@ pub fn growCapacity(capacity: usize) anyerror!usize {
 
 fn repl(vm: *VM, stdin: std.fs.File.Reader, stdout: std.fs.File.Writer) !void {
     repl: while (true) {
-        try stdout.print("> ", .{});
         const max_input = 1024;
         var input_buffer: [max_input]u8 = undefined;
-        var input_str = (try stdin.readUntilDelimiterOrEof(input_buffer[0..], '\n')) orelse {
+        var input = (try stdin.readUntilDelimiterOrEof(input_buffer[0..], '\n')) orelse {
             try stdout.print("\n", .{});
             return;
         };
 
-        var result = try vm.interpret(input_str);
+        var result = try vm.interpret(input);
         if (result == InterpretResult.interpret_ok) {
             break :repl;
         }
@@ -39,7 +38,7 @@ pub fn main() anyerror!void {
 
     var gpa = std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = true }){};
     defer {
-        //std.log.info("Used {} of memory.", .{std.fmt.fmtIntSizeDec(gpa.total_requested_bytes)});
+        std.log.info("\n----\nUsed {} of memory.", .{std.fmt.fmtIntSizeDec(gpa.total_requested_bytes)});
         _ = gpa.deinit();
     }
     var allocator = gpa.allocator();
@@ -48,4 +47,14 @@ pub fn main() anyerror!void {
     defer vm.deinit();
 
     try repl(&vm, stdin, stdout);
+}
+
+test "smoke test" {
+    const allocator = std.testing.allocator;
+    var vm = VM.init(allocator, true);
+    defer vm.deinit();
+    var input = "(5 - (3 - 1)) + -1;";
+
+    var result = try vm.interpret(input);
+    try std.testing.expectEqual(result, InterpretResult.interpret_ok);
 }

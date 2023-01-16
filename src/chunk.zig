@@ -62,16 +62,6 @@ pub fn deinit(self: *Chunk) void {
     self.* = undefined;
 }
 
-test "init" {
-    {
-        var basicChunk = Chunk.init(testing.allocator);
-        defer basicChunk.deinit();
-
-        try std.testing.expect(basicChunk.capacity == 0);
-        try std.testing.expect(basicChunk.count == 0);
-    }
-}
-
 test "writeChunk" {
     {
         var basicChunk = Chunk.init(testing.allocator);
@@ -95,7 +85,7 @@ test "disassembleChunk" {
         try std.testing.expect(basicChunk.capacity == 0);
         try std.testing.expect(basicChunk.count == 0);
 
-        var value = Value{ .data = 4.20 };
+        var value = Value.newNumber(4.2);
         var idx = try basicChunk.addConstant(value);
         try basicChunk.writeChunk(@enumToInt(Opcode.op_constant), 123);
         try basicChunk.writeChunk(idx, 123);
@@ -114,7 +104,7 @@ test "addConstant" {
         try std.testing.expect(basicChunk.capacity == 0);
         try std.testing.expect(basicChunk.count == 0);
 
-        var value = Value{ .data = 4.20 };
+        var value = Value.newNumber(4.2);
         var result = try basicChunk.addConstant(value);
         try std.testing.expect(result == 0);
         result = try basicChunk.addConstant(value);

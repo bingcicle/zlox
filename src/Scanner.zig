@@ -2,8 +2,6 @@ const std = @import("std");
 const Token = @import("token.zig").Token;
 const TokenType = @import("token.zig").TokenType;
 
-const print = std.debug.print;
-
 const Self = @This();
 
 source: []const u8,
