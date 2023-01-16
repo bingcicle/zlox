@@ -37,14 +37,15 @@ pub const Value = struct {
 
 pub const ValueTypeTag = packed union { bool: bool, nil: void, number: f64 };
 
-test "ValueType" {
-    var v = Value.newBool(true);
-    //var v = Value{ .type = Value.Type.bool, .data = ValueTypeTag{ .bool = true } };
-    //std.debug.print("{d}\n", .{@typeInfo(@TypeOf(v))});
-    //std.debug.print("{any}\n", .{@sizeOf(u16)});
-    try std.testing.expectEqual(16, @sizeOf(@TypeOf(v)));
-    try std.testing.expect(v.asBool());
-    try std.testing.expect(v.isBool());
+test "Tagged unions have correct size (18.1)" {
+    var v = ValueTypeTag{ .bool = true };
+    try std.testing.expectEqual(8, @sizeOf(@TypeOf(v)));
+
+    v = ValueTypeTag{ .number = 1.0 };
+    try std.testing.expectEqual(8, @sizeOf(@TypeOf(v)));
+
+    v = ValueTypeTag{ .nil = {} };
+    try std.testing.expectEqual(8, @sizeOf(@TypeOf(v)));
 }
 
 pub fn ValueArray() type {
