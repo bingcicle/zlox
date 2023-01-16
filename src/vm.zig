@@ -149,8 +149,8 @@ pub fn VirtualMachine() type {
             try self.stack.append(value);
         }
 
-        pub fn peek(self: *Self) Value {
-            return self.stack.pop();
+        pub fn peek(self: *Self) ?Value {
+            return if (self.stack.items.len > 0) self.stack.items[0] else null;
         }
 
         pub fn pop(self: *Self) Value {
