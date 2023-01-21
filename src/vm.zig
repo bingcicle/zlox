@@ -9,7 +9,6 @@ const Opcode = @import("opcode.zig").Opcode;
 const ArrayList = std.ArrayList;
 const Scanner = @import("Scanner.zig");
 const Parser = @import("Parser.zig");
-
 const Compiler = @import("Compiler.zig");
 
 pub const InterpretResult = enum(u8) {
@@ -64,13 +63,15 @@ pub fn VirtualMachine() type {
                 .previous = null,
                 .had_error = false,
                 .panic_mode = false,
-                .compiling_chunk = &chunk,
                 .scanner = &scanner,
             };
 
             // compile() returns false if an error occurred.
-            var compiler = Compiler{};
-            var had_error = try compiler.compile(&parser);
+            var compiler = Compiler{
+                .parser = &parser,
+                .compiling_chunk = &chunk,
+            };
+            var had_error = try compiler.compile();
 
             if (!had_error) {
                 return InterpretResult.compile_error;
