@@ -69,6 +69,18 @@ pub fn disassembleInstruction(chunk: anytype, offset: usize) usize {
         Opcode.op_false => {
             return simpleInstruction("OP_FALSE", offset);
         },
+        Opcode.op_equal => {
+            return simpleInstruction("OP_EQUAL", offset);
+        },
+        Opcode.op_greater => {
+            return simpleInstruction("OP_GREATER", offset);
+        },
+        Opcode.op_less => {
+            return simpleInstruction("OP_LESS", offset);
+        },
+        Opcode.op_not => {
+            return simpleInstruction("OP_NOT", offset);
+        },
     }
 }
 

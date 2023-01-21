@@ -30,7 +30,6 @@ fn getRule(token_type: TokenType) ParseRule {
             .infix = null,
             .precedence = Precedence.none,
         },
-
         TokenType.minus => ParseRule{
             .prefix = unary,
             .infix = binary,
@@ -63,11 +62,29 @@ fn getRule(token_type: TokenType) ParseRule {
             .infix = null,
             .precedence = Precedence.none,
         },
-
         TokenType.nil => ParseRule{
             .prefix = literal,
             .infix = null,
             .precedence = Precedence.none,
+        },
+        TokenType.bang => ParseRule{
+            .prefix = unary,
+            .infix = null,
+            .precedence = Precedence.none,
+        },
+        TokenType.equal_equal => ParseRule{
+            .prefix = null,
+            .infix = binary,
+            .precedence = Precedence.equality,
+        },
+        TokenType.greater,
+        TokenType.greater_equal,
+        TokenType.less,
+        TokenType.less_equal,
+        => ParseRule{
+            .prefix = null,
+            .infix = binary,
+            .precedence = Precedence.comparison,
         },
         else => ParseRule{
             .prefix = null,
@@ -129,16 +146,14 @@ pub fn parsePrecedence(self: *Parser, precedence: Precedence) !void {
             return;
         }
 
-        if (self.current) |safe_current| {
-            while (@enumToInt(precedence) <= @enumToInt(getRule(safe_current.type).precedence)) {
-                self.advance();
-                if (self.previous) |inner_safe_previous| {
-                    var infixRule = getRule(inner_safe_previous.type).infix;
-                    if (infixRule) |safeInfix| {
-                        try @call(.auto, safeInfix, .{self});
-                    } else {
-                        break;
-                    }
+        while (@enumToInt(precedence) <= @enumToInt(getRule(self.current.?.type).precedence)) {
+            self.advance();
+            if (self.previous) |inner_safe_previous| {
+                var infixRule = getRule(inner_safe_previous.type).infix;
+                if (infixRule) |safeInfix| {
+                    try @call(.auto, safeInfix, .{self});
+                } else {
+                    break;
                 }
             }
         }
@@ -154,9 +169,24 @@ pub fn binary(self: *Parser) !void {
     if (self.previous) |safe_previous| {
         var operator_type: TokenType = safe_previous.type;
         var rule = getRule(operator_type);
-        try self.parsePrecedence(@intToEnum(Precedence, @enumToInt(rule.precedence) + 1));
+        try self.parsePrecedence(@intToEnum(Precedence, (@enumToInt(rule.precedence) + 1)));
 
         return switch (operator_type) {
+            TokenType.bang_equal => self.emitBytes(
+                @enumToInt(Opcode.op_equal),
+                @enumToInt(Opcode.op_not),
+            ),
+            TokenType.equal_equal => self.emitByte(@enumToInt(Opcode.op_equal)),
+            TokenType.greater => self.emitByte(@enumToInt(Opcode.op_greater)),
+            TokenType.greater_equal => self.emitBytes(
+                @enumToInt(Opcode.op_less),
+                @enumToInt(Opcode.op_not),
+            ),
+            TokenType.less => self.emitByte(@enumToInt(Opcode.op_less)),
+            TokenType.less_equal => self.emitBytes(
+                @enumToInt(Opcode.op_greater),
+                @enumToInt(Opcode.op_not),
+            ),
             TokenType.plus => self.emitByte(@enumToInt(Opcode.op_add)),
             TokenType.minus => self.emitByte(@enumToInt(Opcode.op_subtract)),
             TokenType.star => self.emitByte(@enumToInt(Opcode.op_multiply)),
@@ -174,6 +204,7 @@ pub fn unary(self: *Parser) !void {
         try self.parsePrecedence(Precedence.unary);
 
         return switch (operator_type) {
+            TokenType.bang => self.emitByte(@enumToInt(Opcode.op_not)),
             TokenType.minus => self.emitByte(@enumToInt(Opcode.op_negate)),
             else => unreachable,
         };
@@ -282,25 +313,4 @@ pub fn errorAt(self: *Parser, token: Token, msg: []const u8) void {
 
     std.debug.print(": {s}\n", .{msg});
     self.had_error = true;
-}
-
-test "Parser" {
-    const allocator = std.testing.allocator;
-    var source = "var x = 1;";
-    var scanner = Scanner.init(source);
-    var chunk = Chunk.init(allocator);
-
-    defer chunk.deinit();
-
-    var parser = Parser{
-        .current = null,
-        .previous = null,
-        .had_error = false,
-        .panic_mode = false,
-        .compiling_chunk = &chunk,
-        .scanner = &scanner,
-    };
-    const writer = std.io.getStdOut().writer();
-
-    try debug.disassembleChunk(parser.compiling_chunk, "test \"Parser\"", writer);
 }

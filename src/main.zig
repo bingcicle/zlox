@@ -43,7 +43,7 @@ pub fn main() anyerror!void {
     }
     var allocator = gpa.allocator();
 
-    var vm = VM.init(allocator, false);
+    var vm = VM.init(allocator, true);
     defer vm.deinit();
 
     try repl(&vm, stdin, stdout);
@@ -51,9 +51,9 @@ pub fn main() anyerror!void {
 
 test "smoke test" {
     const allocator = std.testing.allocator;
-    var vm = VM.init(allocator, true);
+    var vm = VM.init(allocator, false);
     defer vm.deinit();
-    var input = "(5 - (3 - 1)) + -1;";
+    var input = "!(5 - 4 > 3 * 2 == !nil);";
 
     var result = try vm.interpret(input);
     try std.testing.expectEqual(result, InterpretResult.ok);
