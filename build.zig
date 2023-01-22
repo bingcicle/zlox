@@ -31,4 +31,8 @@ pub fn build(b: *std.build.Builder) void {
 
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&exe_tests.step);
+
+    var tests = b.addTest("tests/vm.zig");
+    tests.addPackage(.{ .name = "vm", .source = .{ .path = "src/vm.zig" }, .dependencies = exe.packages.items });
+    test_step.dependOn(&tests.step);
 }

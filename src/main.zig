@@ -48,13 +48,3 @@ pub fn main() anyerror!void {
 
     try repl(&vm, stdin, stdout);
 }
-
-test "smoke test" {
-    const allocator = std.testing.allocator;
-    var vm = VM.init(allocator, true);
-    defer vm.deinit();
-    var input = "!(5 - 4 > 3 * 2 == !nil);";
-
-    var result = try vm.interpret(input);
-    try std.testing.expectEqual(result, InterpretResult.ok);
-}
