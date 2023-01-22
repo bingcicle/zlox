@@ -4,10 +4,8 @@ const testing = std.testing;
 const debug = @import("debug.zig");
 const ValueArray = @import("value.zig").ValueArray;
 const Value = @import("value.zig").Value;
-const VirtualMachine = @import("vm.zig").VirtualMachine;
+const VM = @import("vm.zig").VirtualMachine;
 const InterpretResult = @import("vm.zig").InterpretResult;
-
-const VM = VirtualMachine();
 
 pub fn growCapacity(capacity: usize) anyerror!usize {
     switch (capacity < 8) {
@@ -21,7 +19,7 @@ fn repl(vm: *VM, stdin: std.fs.File.Reader, stdout: std.fs.File.Writer) !void {
         const max_input = 1024;
         var input_buffer: [max_input]u8 = undefined;
         var input = (try stdin.readUntilDelimiterOrEof(input_buffer[0..], '\n')) orelse {
-            try stdout.print("\n", .{});
+            try stdout.print("\n>", .{});
             return;
         };
 
@@ -32,7 +30,26 @@ fn repl(vm: *VM, stdin: std.fs.File.Reader, stdout: std.fs.File.Writer) !void {
     }
 }
 
+pub fn runFile(vm: *VM, path: []const u8) !InterpretResult {
+    const max_input = 1024;
+    var buf: [max_input]u8 = undefined;
+    try readFile(
+        &buf,
+        path,
+    );
+    return try vm.interpret(&buf);
+}
+
+fn readFile(buffer: []u8, path: []const u8) !void {
+    var file = try std.fs.cwd().openFile(path, .{});
+    defer file.close();
+
+    _ = try file.read(buffer);
+}
+
 pub fn main() anyerror!void {
+    var arg_iter = std.process.args();
+
     const stdin = std.io.getStdIn().reader();
     const stdout = std.io.getStdOut().writer();
 
@@ -46,5 +63,10 @@ pub fn main() anyerror!void {
     var vm = VM.init(allocator, true);
     defer vm.deinit();
 
-    try repl(&vm, stdin, stdout);
+    if (arg_iter.inner.count == 1) {
+        try repl(&vm, stdin, stdout);
+    } else if (arg_iter.inner.count == 2) {
+        _ = arg_iter.next();
+        _ = try runFile(&vm, arg_iter.next().?);
+    }
 }

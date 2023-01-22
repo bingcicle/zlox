@@ -34,5 +34,6 @@ pub fn build(b: *std.build.Builder) void {
 
     var tests = b.addTest("tests/vm.zig");
     tests.addPackage(.{ .name = "vm", .source = .{ .path = "src/vm.zig" }, .dependencies = exe.packages.items });
+    tests.addPackage(.{ .name = "main", .source = .{ .path = "src/main.zig" }, .dependencies = exe.packages.items });
     test_step.dependOn(&tests.step);
 }
