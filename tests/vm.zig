@@ -1,8 +1,6 @@
 const std = @import("std");
-const VirtualMachine = @import("vm").VirtualMachine;
+const VM = @import("vm").VirtualMachine;
 const InterpretResult = @import("vm").InterpretResult;
-
-const VM = VirtualMachine();
 
 test "smoke test" {
     const allocator = std.testing.allocator;
