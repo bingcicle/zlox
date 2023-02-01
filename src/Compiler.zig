@@ -1,4 +1,5 @@
 const std = @import("std");
+const Allocator = std.mem.Allocator;
 
 const Self = @This();
 
@@ -9,9 +10,14 @@ const Value = @import("value.zig").Value;
 const Chunk = @import("chunk.zig");
 const debug = @import("debug.zig");
 const Parser = @import("Parser.zig");
+const Obj = @import("Object.zig");
+const ObjString = @import("Object.zig").ObjString;
+const VM = @import("vm.zig").VirtualMachine;
 
 parser: *Parser,
 compiling_chunk: *Chunk,
+allocator: Allocator,
+vm: *VM,
 
 const ParseRule = struct {
     prefix: ?*const fn (*Self) anyerror!void,
@@ -42,6 +48,11 @@ fn getRule(token_type: TokenType) ParseRule {
             .prefix = null,
             .infix = binary,
             .precedence = Precedence.factor,
+        },
+        TokenType.string => ParseRule{
+            .prefix = string,
+            .infix = null,
+            .precedence = Precedence.none,
         },
         TokenType.number => ParseRule{
             .prefix = number,
@@ -172,10 +183,21 @@ pub fn binary(self: *Self) !void {
     }
 }
 
+pub fn string(self: *Self) !void {
+    if (self.parser.previous) |safe_token| {
+        const obj_string = try ObjString.copy(
+            self.vm,
+            self.allocator,
+            self.parser.scanner.source[(safe_token.start + 1)..(safe_token.start + safe_token.length - 1)],
+        );
+        try self.emitConstant(Value.newObj(&obj_string.obj));
+    }
+}
+
 pub fn number(self: *Self) !void {
     if (self.parser.previous) |safe_previous| {
-        var string = self.parser.scanner.source[safe_previous.start..(safe_previous.start + safe_previous.length)];
-        try self.emitConstant(Value.newNumber(try std.fmt.parseFloat(f64, string)));
+        var string_ = self.parser.scanner.source[safe_previous.start..(safe_previous.start + safe_previous.length)];
+        try self.emitConstant(Value.newNumber(try std.fmt.parseFloat(f64, string_)));
     }
 }
 

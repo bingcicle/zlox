@@ -3,12 +3,14 @@ const Opcode = @import("opcode.zig").Opcode;
 const Chunk = @import("chunk.zig");
 const WriteError = std.os.WriteError;
 const Value = @import("value.zig").Value;
+const Obj = @import("Object.zig");
 
 pub fn printValue(value: Value) void {
     switch (value.type) {
         Value.Type.bool => std.debug.print("{}", .{Value.asBool(value)}),
         Value.Type.nil => std.debug.print("nil", .{}),
         Value.Type.number => std.debug.print("{d:.5}", .{Value.asNumber(value)}),
+        Value.Type.obj => Obj.print(value),
     }
 }
 

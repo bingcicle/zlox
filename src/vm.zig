@@ -10,6 +10,21 @@ const ArrayList = std.ArrayList;
 const Scanner = @import("Scanner.zig");
 const Parser = @import("Parser.zig");
 const Compiler = @import("Compiler.zig");
+const ObjString = @import("Object.zig").ObjString;
+const Obj = @import("Object.zig");
+const builtin = @import("builtin");
+
+fn erase(ptr: anytype) void {
+    const T = @TypeOf(ptr);
+    const info = @typeInfo(T);
+    if (info != .Pointer) @compileError("erase() wants pointer to local variable to erase; given non-pointer");
+    if (info.Pointer.size != .One) @compileError("erase() wants *T; given " ++ @typeName(T));
+
+    if (builtin.mode == .Debug or builtin.mode == .ReleaseSafe) {
+        const byte_ptr = @ptrCast([*]u8, @alignCast(1, ptr));
+        @memset(byte_ptr, 0xaa, @sizeOf(info.Pointer.child));
+    }
+}
 
 pub const VirtualMachine = @This();
 
@@ -30,6 +45,7 @@ const Self = @This();
 
 allocator: Allocator,
 chunk: Chunk,
+objects: ?*Obj,
 debug_trace_execution: bool = false,
 stack: ArrayList(Value),
 ip: [*]u8 = undefined,
@@ -39,6 +55,7 @@ pub fn init(allocator: Allocator, debug_trace_execution: bool) Self {
     return Self{
         .allocator = allocator,
         .chunk = undefined,
+        .objects = null,
         .debug_trace_execution = debug_trace_execution,
         .stack = stack,
     };
@@ -70,6 +87,8 @@ pub fn interpret(self: *Self, source: []const u8) !InterpretResult {
     var compiler = Compiler{
         .parser = &parser,
         .compiling_chunk = &chunk,
+        .allocator = self.allocator,
+        .vm = self,
     };
     var had_error = try compiler.compile();
 
@@ -130,7 +149,28 @@ pub fn run(self: *Self) !InterpretResult {
                 _ = try self.push(Value.newBool(Value.equals(a, b)));
                 continue;
             },
-            Opcode.op_add,
+            Opcode.op_add => {
+                if (self.peek(0)) |safe_peek| {
+                    if (self.peek(1)) |safe_peek_inner| {
+                        if (Value.isString(safe_peek) and Value.isString(safe_peek_inner)) {
+                            const chars = try self.concatenate();
+                            const obj_string = try ObjString.create(self, self.allocator, chars);
+                            _ = try self.push(Value.newObj(&obj_string.obj));
+                            continue;
+                        } else if (Value.isNumber(safe_peek) and Value.isNumber(safe_peek_inner)) {
+                            var b: f64 = Value.asNumber(self.pop());
+                            var a: f64 = Value.asNumber(self.pop());
+                            const value = try Opcode.handleBinaryOp(opcode, a, b);
+                            _ = try self.push(value);
+                            continue;
+                        } else {
+                            try self.runtimeError(RuntimeError.OperandsNotNumbers, .{});
+                            return InterpretResult.runtime_error;
+                        }
+                    }
+                }
+                continue;
+            },
             Opcode.op_subtract,
             Opcode.op_multiply,
             Opcode.op_divide,
@@ -143,11 +183,7 @@ pub fn run(self: *Self) !InterpretResult {
                             try self.runtimeError(RuntimeError.OperandsNotNumbers, .{});
                             return InterpretResult.runtime_error;
                         }
-                    } else {
-                        continue;
                     }
-                } else {
-                    continue;
                 }
                 var b: f64 = Value.asNumber(self.pop());
                 var a: f64 = Value.asNumber(self.pop());
@@ -177,9 +213,18 @@ pub fn run(self: *Self) !InterpretResult {
 pub fn deinit(self: *Self) void {
     self.stack.deinit();
     self.chunk.deinit();
+    self.freeObjects();
     self.* = undefined;
 }
 
+fn freeObjects(self: *Self) void {
+    var object = self.objects;
+    while (object != null) {
+        var next = object.?.next;
+        object.?.deinit(self.allocator);
+        object = next;
+    }
+}
 pub fn push(self: *Self, value: Value) !void {
     try self.stack.append(value);
 }
@@ -190,6 +235,18 @@ pub fn peek(self: *Self, distance: usize) ?Value {
 
 pub fn pop(self: *Self) Value {
     return self.stack.pop();
+}
+
+pub fn concatenate(self: *Self) ![]const u8 {
+    var b = Value.asString(self.pop());
+    var a = Value.asString(self.pop());
+
+    const chars = try self.allocator.alloc(u8, a.chars.len + b.chars.len);
+
+    std.mem.copy(u8, chars[0..a.chars.len], a.chars);
+    std.mem.copy(u8, chars[a.chars.len..], b.chars);
+
+    return chars;
 }
 
 // Here we use anytype in place of a variadic function, which is C-style.

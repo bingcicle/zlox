@@ -1,16 +1,22 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const testing = std.testing;
-
+const Obj = @import("Object.zig");
+const ObjString = @import("Object.zig").ObjString;
 const growCapacity = @import("main.zig").growCapacity;
 
-pub const ValueTypeTag = packed union { bool: bool, nil: void, number: f64 };
+pub const ValueTypeTag = packed union {
+    bool: bool,
+    nil: void,
+    number: f64,
+    obj: *Obj,
+};
 
 pub const Value = struct {
     type: Type,
     data: ValueTypeTag,
 
-    pub const Type = enum { bool, nil, number };
+    pub const Type = enum { bool, nil, number, obj };
 
     pub fn equals(a: Value, b: Value) bool {
         if (a.type != b.type) return false;
@@ -18,21 +24,44 @@ pub const Value = struct {
             Type.bool => return Value.asBool(a) == Value.asBool(b),
             Type.nil => return true,
             Type.number => return Value.asNumber(a) == Value.asNumber(b),
+            Type.obj => {
+                var aString = Value.asString(a);
+                var bString = Value.asString(b);
+                return std.mem.eql(u8, aString.chars, bString.chars);
+            },
         }
 
         return false;
     }
 
     pub fn newBool(value: bool) Value {
-        return Value{ .type = Value.Type.bool, .data = ValueTypeTag{ .bool = value } };
+        return Value{
+            .type = Value.Type.bool,
+            .data = ValueTypeTag{ .bool = value },
+        };
     }
 
     pub fn newNil() Value {
-        return Value{ .type = Value.Type.nil, .data = ValueTypeTag{ .number = 0.0 } };
+        return Value{
+            .type = Value.Type.nil,
+            .data = ValueTypeTag{ .number = 0.0 },
+        };
     }
 
     pub fn newNumber(value: f64) Value {
-        return Value{ .type = Value.Type.number, .data = ValueTypeTag{ .number = value } };
+        return Value{
+            .type = Value.Type.number,
+            .data = ValueTypeTag{
+                .number = value,
+            },
+        };
+    }
+
+    pub fn newObj(obj: *Obj) Value {
+        return Value{
+            .type = Value.Type.obj,
+            .data = ValueTypeTag{ .obj = obj },
+        };
     }
 
     pub fn asBool(self: Value) bool {
@@ -43,6 +72,14 @@ pub const Value = struct {
         return @as(f64, self.data.number);
     }
 
+    pub fn asObj(self: Value) *Obj {
+        return @as(*Obj, self.data.obj);
+    }
+
+    pub fn asString(self: Value) *ObjString {
+        return self.asObj().asString();
+    }
+
     pub fn isBool(self: Value) bool {
         return self.type == Type.bool;
     }
@@ -51,8 +88,20 @@ pub const Value = struct {
         return self.type == Type.number;
     }
 
+    pub fn isString(self: Value) bool {
+        return self.isObjType(Obj.Type.String);
+    }
+
     pub fn isNil(self: Value) bool {
         return self.type == Type.nil;
+    }
+
+    pub fn isObj(self: Value) bool {
+        return self.type == Type.obj;
+    }
+
+    fn isObjType(self: Value, obj_type: Obj.Type) bool {
+        return self.isObj() and self.asObj().type == obj_type;
     }
 
     pub fn isFalsey(value: Value) bool {

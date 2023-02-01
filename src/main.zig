@@ -17,6 +17,7 @@ pub fn growCapacity(capacity: usize) anyerror!usize {
 fn repl(vm: *VM, stdin: std.fs.File.Reader, stdout: std.fs.File.Writer) !void {
     repl: while (true) {
         const max_input = 1024;
+        try stdout.print("\n> ", .{});
         var input_buffer: [max_input]u8 = undefined;
         var input = (try stdin.readUntilDelimiterOrEof(input_buffer[0..], '\n')) orelse {
             try stdout.print("\n>", .{});
@@ -55,12 +56,13 @@ pub fn main() anyerror!void {
 
     var gpa = std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = true }){};
     defer {
+        std.debug.print("\n", .{});
         std.log.info("\n----\nUsed {} of memory.", .{std.fmt.fmtIntSizeDec(gpa.total_requested_bytes)});
         _ = gpa.deinit();
     }
     var allocator = gpa.allocator();
 
-    var vm = VM.init(allocator, true);
+    var vm = VM.init(allocator, false);
     defer vm.deinit();
 
     if (arg_iter.inner.count == 1) {
