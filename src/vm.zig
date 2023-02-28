@@ -12,6 +12,7 @@ const Parser = @import("Parser.zig");
 const Compiler = @import("Compiler.zig");
 const ObjString = @import("Object.zig").ObjString;
 const Obj = @import("Object.zig");
+const Table = @import("Table.zig");
 const builtin = @import("builtin");
 
 fn erase(ptr: anytype) void {
@@ -46,19 +47,38 @@ const Self = @This();
 allocator: Allocator,
 chunk: Chunk,
 objects: ?*Obj,
+strings: Table,
 debug_trace_execution: bool = false,
 stack: ArrayList(Value),
 ip: [*]u8 = undefined,
 
-pub fn init(allocator: Allocator, debug_trace_execution: bool) Self {
+pub fn init(allocator: Allocator, debug_trace_execution: bool) !Self {
     var stack = ArrayList(Value).initCapacity(allocator, STACK_MAX) catch ArrayList(Value).init(allocator);
     return Self{
         .allocator = allocator,
         .chunk = undefined,
+        .strings = try Table.init(allocator),
         .objects = null,
         .debug_trace_execution = debug_trace_execution,
         .stack = stack,
     };
+}
+
+fn readFile(buffer: []u8, path: []const u8) !void {
+    var file = try std.fs.cwd().openFile(path, .{});
+    defer file.close();
+
+    _ = try file.read(buffer);
+}
+
+pub fn runFile(self: *Self, path: []const u8) !InterpretResult {
+    const max_input = 1024;
+    var buf: [max_input]u8 = undefined;
+    try readFile(
+        &buf,
+        path,
+    );
+    return try self.interpret(&buf);
 }
 
 fn read_byte(self: *Self) u8 {
@@ -154,7 +174,8 @@ pub fn run(self: *Self) !InterpretResult {
                     if (self.peek(1)) |safe_peek_inner| {
                         if (Value.isString(safe_peek) and Value.isString(safe_peek_inner)) {
                             const chars = try self.concatenate();
-                            const obj_string = try ObjString.create(self, self.allocator, chars);
+                            var hash = ObjString.hash(chars);
+                            const obj_string = try ObjString.create(self, self.allocator, chars, hash);
                             _ = try self.push(Value.newObj(&obj_string.obj));
                             continue;
                         } else if (Value.isNumber(safe_peek) and Value.isNumber(safe_peek_inner)) {
@@ -213,6 +234,7 @@ pub fn run(self: *Self) !InterpretResult {
 pub fn deinit(self: *Self) void {
     self.stack.deinit();
     self.chunk.deinit();
+    self.freeTable();
     self.freeObjects();
     self.* = undefined;
 }
@@ -221,10 +243,17 @@ fn freeObjects(self: *Self) void {
     var object = self.objects;
     while (object != null) {
         var next = object.?.next;
-        object.?.deinit(self.allocator);
-        object = next;
+        if (object) |safe_object| {
+            safe_object.deinit(self.allocator);
+            object = next;
+        }
     }
 }
+
+fn freeTable(self: *Self) void {
+    self.strings.deinit();
+}
+
 pub fn push(self: *Self, value: Value) !void {
     try self.stack.append(value);
 }

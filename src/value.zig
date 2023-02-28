@@ -2,7 +2,6 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const testing = std.testing;
 const Obj = @import("Object.zig");
-const ObjString = @import("Object.zig").ObjString;
 const growCapacity = @import("main.zig").growCapacity;
 
 pub const ValueTypeTag = packed union {
@@ -25,9 +24,10 @@ pub const Value = struct {
             Type.nil => return true,
             Type.number => return Value.asNumber(a) == Value.asNumber(b),
             Type.obj => {
-                var aString = Value.asString(a);
-                var bString = Value.asString(b);
-                return std.mem.eql(u8, aString.chars, bString.chars);
+                return Value.asObj(a) == Value.asObj(b);
+                // var aString = Value.asString(a);
+                // var bString = Value.asString(b);
+                // return std.mem.eql(u8, aString.chars, bString.chars);
             },
         }
 
@@ -76,7 +76,7 @@ pub const Value = struct {
         return @as(*Obj, self.data.obj);
     }
 
-    pub fn asString(self: Value) *ObjString {
+    pub fn asString(self: Value) *Obj.ObjString {
         return self.asObj().asString();
     }
 

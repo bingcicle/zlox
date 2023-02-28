@@ -7,7 +7,7 @@ const debug = @import("debug.zig");
 const ValueArray = @import("value.zig").ValueArray;
 const Value = @import("value.zig").Value;
 const growCapacity = @import("main.zig").growCapacity;
-const Opcode = @import("opcode.zig").Opcode;
+const Opcode = @import("opcode").Opcode;
 
 const Constants = ValueArray();
 

@@ -11,7 +11,6 @@ const Chunk = @import("chunk.zig");
 const debug = @import("debug.zig");
 const Parser = @import("Parser.zig");
 const Obj = @import("Object.zig");
-const ObjString = @import("Object.zig").ObjString;
 const VM = @import("vm.zig").VirtualMachine;
 
 parser: *Parser,
@@ -128,7 +127,7 @@ pub fn parsePrecedence(self: *Self, precedence: Precedence) !void {
         var prefixRule = getRule(safe_previous.type).prefix;
 
         if (prefixRule) |safeRule| {
-            try @call(.auto, safeRule, .{self});
+            try @call(.{}, safeRule, .{self});
         } else {
             self.parser.parserError("Expect expression.");
             return;
@@ -139,7 +138,7 @@ pub fn parsePrecedence(self: *Self, precedence: Precedence) !void {
             if (self.parser.previous) |inner_safe_previous| {
                 var infixRule = getRule(inner_safe_previous.type).infix;
                 if (infixRule) |safeInfix| {
-                    try @call(.auto, safeInfix, .{self});
+                    try @call(.{}, safeInfix, .{self});
                 } else {
                     break;
                 }
@@ -185,7 +184,7 @@ pub fn binary(self: *Self) !void {
 
 pub fn string(self: *Self) !void {
     if (self.parser.previous) |safe_token| {
-        const obj_string = try ObjString.copy(
+        const obj_string = try Obj.ObjString.copy(
             self.vm,
             self.allocator,
             self.parser.scanner.source[(safe_token.start + 1)..(safe_token.start + safe_token.length - 1)],
