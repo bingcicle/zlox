@@ -34,13 +34,13 @@ pub fn free(self: *Table) void {
 }
 
 pub fn set(self: *Table, key: *Obj.ObjString, value: Value) !bool {
-    if (self.count == 0) return false;
     if (@intToFloat(f16, self.count + 1) > @intToFloat(f16, self.capacity) * TABLE_MAX_LOAD) {
-        try self.adjustCapacity(self.capacity);
+        try self.adjustCapacity();
     }
 
     var entry = self.findEntry(key);
 
+    std.debug.print("set entry: {any}\n", .{entry.value});
     var is_new_key = entry.key == null;
 
     if (is_new_key and Value.isNil(entry.value)) {
@@ -49,14 +49,16 @@ pub fn set(self: *Table, key: *Obj.ObjString, value: Value) !bool {
 
     entry.key = key;
     entry.value = value;
+
+    std.debug.print("set entry: {any}\n", .{entry.value});
     return is_new_key;
 }
 
 pub fn get(self: *Table, key: *Obj.ObjString, value: *Value) bool {
     if (self.count == 0) return false;
 
-    var entry: *Entry = self.findEntry(key);
-    if (entry.key) {
+    var entry = self.findEntry(key);
+    if (entry.key != null) {
         value.* = entry.value;
 
         return true;
@@ -78,19 +80,20 @@ pub fn delete(self: *Table, key: *Obj.ObjString) bool {
     return true;
 }
 
-fn adjustCapacity(self: *Table, capacity: usize) !void {
-    const new_capacity = if (self.entries.len < 8) 8 else self.entries.len * 2;
+fn adjustCapacity(self: *Table) !void {
+    const new_capacity = if (self.capacity < 8) 8 else self.capacity * 2;
     var entries = try self.allocator.alloc(Entry, new_capacity);
 
+    std.debug.print("entries: {}", .{entries.len});
     var i: usize = 0;
-    while (i < capacity) : (i += 1) {
+    while (i < new_capacity) : (i += 1) {
         entries[i].key = null;
         entries[i].value = Value.newNil();
     }
 
     i = 0;
     self.count = 0;
-    while (i < capacity) : (i += 1) {
+    while (i < self.capacity) : (i += 1) {
         var entry = self.entries[i];
         if (entry.key) |safe_key| {
             var dest = self.findEntry(safe_key);
@@ -104,11 +107,13 @@ fn adjustCapacity(self: *Table, capacity: usize) !void {
 
     self.allocator.free(self.entries);
     self.entries = entries;
-    self.capacity = capacity;
+    self.capacity = new_capacity;
 }
 
 pub fn findEntry(self: *Table, key: *Obj.ObjString) *Entry {
-    var index = if (self.capacity > 0) key.hash % self.capacity else 0;
+    // var index = if (self.capacity > 0) key.hash % self.capacity else 0;
+    var index = key.hash % self.capacity;
+
     var tombstone: ?*Entry = null;
     while (true) {
         var entry = &self.entries[index];
@@ -127,7 +132,8 @@ pub fn findEntry(self: *Table, key: *Obj.ObjString) *Entry {
                 }
             }
         }
-        index = @mod((index + 1), self.capacity);
+        std.debug.print("idx: {} {}\n", .{ index, self.capacity });
+        index = (index + 1) % self.capacity;
     }
 }
 

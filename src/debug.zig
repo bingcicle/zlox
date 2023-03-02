@@ -71,6 +71,18 @@ pub fn disassembleInstruction(chunk: anytype, offset: usize) usize {
         Opcode.op_false => {
             return simpleInstruction("OP_FALSE", offset);
         },
+        Opcode.op_pop => {
+            return simpleInstruction("OP_POP", offset);
+        },
+        Opcode.op_get_global => {
+            return constantInstruction("OP_GET_GLOBAL", chunk, offset);
+        },
+        Opcode.op_define_global => {
+            return constantInstruction("OP_DEFINE_GLOBAL", chunk, offset);
+        },
+        Opcode.op_set_global => {
+            return constantInstruction("OP_SET_GLOBAL", chunk, offset);
+        },
         Opcode.op_equal => {
             return simpleInstruction("OP_EQUAL", offset);
         },
@@ -82,6 +94,9 @@ pub fn disassembleInstruction(chunk: anytype, offset: usize) usize {
         },
         Opcode.op_not => {
             return simpleInstruction("OP_NOT", offset);
+        },
+        Opcode.op_print => {
+            return simpleInstruction("OP_PRINT", offset);
         },
     }
 }

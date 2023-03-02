@@ -38,6 +38,7 @@ pub const InterpretResult = enum(u8) {
 const RuntimeError = error{
     OperandNotNumber,
     OperandsNotNumbers,
+    UndefinedVariable,
 };
 
 pub const STACK_MAX: u8 = 255;
@@ -47,6 +48,7 @@ const Self = @This();
 allocator: Allocator,
 chunk: Chunk,
 objects: ?*Obj,
+globals: Table,
 strings: Table,
 debug_trace_execution: bool = false,
 stack: ArrayList(Value),
@@ -57,6 +59,7 @@ pub fn init(allocator: Allocator, debug_trace_execution: bool) !Self {
     return Self{
         .allocator = allocator,
         .chunk = undefined,
+        .globals = try Table.init(allocator),
         .strings = try Table.init(allocator),
         .objects = null,
         .debug_trace_execution = debug_trace_execution,
@@ -89,6 +92,10 @@ fn read_byte(self: *Self) u8 {
 
 fn read_constant(self: *Self) Value {
     return self.chunk.constants.values.ptr[self.read_byte()];
+}
+
+fn read_string(self: *Self) *Obj.ObjString {
+    return Value.asString(self.read_constant());
 }
 
 pub fn interpret(self: *Self, source: []const u8) !InterpretResult {
@@ -142,10 +149,6 @@ pub fn run(self: *Self) !InterpretResult {
         var opcode = @intToEnum(Opcode, self.read_byte());
 
         switch (opcode) {
-            Opcode.op_return => {
-                debug.printValue(self.pop());
-                return InterpretResult.ok;
-            },
             Opcode.op_constant => {
                 var constant = self.read_constant();
                 _ = try self.push(constant);
@@ -161,6 +164,38 @@ pub fn run(self: *Self) !InterpretResult {
             },
             Opcode.op_false => {
                 _ = try self.push(Value.newBool(false));
+                continue;
+            },
+            Opcode.op_pop => {
+                _ = self.pop();
+                continue;
+            },
+            Opcode.op_get_global => {
+                var name = self.read_string();
+
+                var value: Value = undefined;
+                if (!self.globals.get(name, &value)) {
+                    _ = try self.runtimeError(RuntimeError.UndefinedVariable, name.chars);
+                    return InterpretResult.runtime_error;
+                }
+
+                try self.push(value);
+                continue;
+            },
+            Opcode.op_define_global => {
+                var name = self.read_string();
+                _ = try self.globals.set(name, self.peek(0).?);
+                _ = self.pop();
+                continue;
+            },
+            Opcode.op_set_global => {
+                var name = self.read_string();
+                if (try self.globals.set(name, self.peek(0).?)) {
+                    _ = self.globals.delete(name);
+                    _ = try self.runtimeError(RuntimeError.UndefinedVariable, name.chars);
+                    return InterpretResult.runtime_error;
+                }
+                _ = self.pop();
                 continue;
             },
             Opcode.op_equal => {
@@ -185,7 +220,7 @@ pub fn run(self: *Self) !InterpretResult {
                             _ = try self.push(value);
                             continue;
                         } else {
-                            try self.runtimeError(RuntimeError.OperandsNotNumbers, .{});
+                            try self.runtimeError(RuntimeError.OperandsNotNumbers, "");
                             return InterpretResult.runtime_error;
                         }
                     }
@@ -201,7 +236,7 @@ pub fn run(self: *Self) !InterpretResult {
                 if (self.peek(0)) |safe_peek| {
                     if (self.peek(1)) |safe_peek_inner| {
                         if (!Value.isNumber(safe_peek) or !Value.isNumber(safe_peek_inner)) {
-                            try self.runtimeError(RuntimeError.OperandsNotNumbers, .{});
+                            try self.runtimeError(RuntimeError.OperandsNotNumbers, "");
                             return InterpretResult.runtime_error;
                         }
                     }
@@ -219,12 +254,21 @@ pub fn run(self: *Self) !InterpretResult {
             Opcode.op_negate => {
                 if (self.peek(0)) |safe_peek| {
                     if (!Value.isNumber(safe_peek)) {
-                        _ = try self.runtimeError(RuntimeError.OperandNotNumber, .{});
+                        _ = try self.runtimeError(RuntimeError.OperandNotNumber, "");
                         return InterpretResult.runtime_error;
                     }
                     _ = try self.push(Value.newNumber(-Value.asNumber(self.pop())));
                 }
                 continue;
+            },
+            Opcode.op_print => {
+                debug.printValue(self.pop());
+                std.debug.print("\n", .{});
+                continue;
+            },
+            Opcode.op_return => {
+                // Exit interpreter.
+                return InterpretResult.ok;
             },
         }
         self.ip.* += 1;
@@ -234,7 +278,8 @@ pub fn run(self: *Self) !InterpretResult {
 pub fn deinit(self: *Self) void {
     self.stack.deinit();
     self.chunk.deinit();
-    self.freeTable();
+    self.freeTable(&self.globals);
+    self.freeTable(&self.strings);
     self.freeObjects();
     self.* = undefined;
 }
@@ -250,8 +295,8 @@ fn freeObjects(self: *Self) void {
     }
 }
 
-fn freeTable(self: *Self) void {
-    self.strings.deinit();
+fn freeTable(_: *Self, table: *Table) void {
+    table.deinit();
 }
 
 pub fn push(self: *Self, value: Value) !void {
@@ -263,6 +308,7 @@ pub fn peek(self: *Self, distance: usize) ?Value {
 }
 
 pub fn pop(self: *Self) Value {
+    std.debug.print("stack: {}", .{self.stack.items.len});
     return self.stack.pop();
 }
 
@@ -279,7 +325,7 @@ pub fn concatenate(self: *Self) ![]const u8 {
 }
 
 // Here we use anytype in place of a variadic function, which is C-style.
-pub fn runtimeError(self: *Self, runtime_error: RuntimeError, _: anytype) !void {
+pub fn runtimeError(self: *Self, runtime_error: RuntimeError, args: []const u8) !void {
     var instruction = @ptrToInt(self.ip) - @ptrToInt(self.chunk.code.ptr) - 1;
     var line = self.chunk.lines.ptr[instruction];
 
@@ -289,6 +335,7 @@ pub fn runtimeError(self: *Self, runtime_error: RuntimeError, _: anytype) !void 
     switch (runtime_error) {
         RuntimeError.OperandNotNumber => try stderr.print("Operand must be a number", .{}),
         RuntimeError.OperandsNotNumbers => try stderr.print("Operands must be numbers", .{}),
+        RuntimeError.UndefinedVariable => try stderr.print("Undefined variable '{s}'.", .{args}),
     }
     try stderr.print("\n\n", .{});
 }

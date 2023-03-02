@@ -19,8 +19,8 @@ allocator: Allocator,
 vm: *VM,
 
 const ParseRule = struct {
-    prefix: ?*const fn (*Self) anyerror!void,
-    infix: ?*const fn (*Self) anyerror!void,
+    prefix: ?*const fn (*Self, bool) anyerror!void,
+    infix: ?*const fn (*Self, bool) anyerror!void,
     precedence: Precedence,
 };
 
@@ -47,6 +47,11 @@ fn getRule(token_type: TokenType) ParseRule {
             .prefix = null,
             .infix = binary,
             .precedence = Precedence.factor,
+        },
+        TokenType.identifier => ParseRule{
+            .prefix = variable,
+            .infix = null,
+            .precedence = Precedence.none,
         },
         TokenType.string => ParseRule{
             .prefix = string,
@@ -111,10 +116,28 @@ pub fn endCompiler(self: *Self) !void {
     return;
 }
 
+fn check(self: *Self, token_type: TokenType) bool {
+    if (self.parser.current) |safe_current| {
+        return safe_current.type == token_type;
+    }
+
+    return false;
+}
+
+pub fn match(self: *Self, token_type: TokenType) bool {
+    if (!self.check(token_type)) {
+        return false;
+    }
+    self.parser.advance();
+    return true;
+}
+
 pub fn compile(self: *Self) !bool {
     self.parser.advance();
-    try self.expression();
-    self.parser.consume(TokenType.eof, "Expect end of expression");
+
+    while (!self.match(TokenType.eof)) {
+        try self.declaration();
+    }
 
     try self.endCompiler();
     return !self.parser.had_error;
@@ -125,12 +148,17 @@ pub fn parsePrecedence(self: *Self, precedence: Precedence) !void {
 
     if (self.parser.previous) |safe_previous| {
         var prefixRule = getRule(safe_previous.type).prefix;
+        var can_assign = @enumToInt(precedence) <= @enumToInt(Precedence.assignment);
 
         if (prefixRule) |safeRule| {
-            try @call(.{}, safeRule, .{self});
+            try @call(.{}, safeRule, .{ self, can_assign });
         } else {
             self.parser.parserError("Expect expression.");
             return;
+        }
+
+        if (prefixRule) |safeRule| {
+            try @call(.{}, safeRule, .{ self, can_assign });
         }
 
         while (@enumToInt(precedence) <= @enumToInt(getRule(self.parser.current.?.type).precedence)) {
@@ -138,20 +166,114 @@ pub fn parsePrecedence(self: *Self, precedence: Precedence) !void {
             if (self.parser.previous) |inner_safe_previous| {
                 var infixRule = getRule(inner_safe_previous.type).infix;
                 if (infixRule) |safeInfix| {
-                    try @call(.{}, safeInfix, .{self});
+                    try @call(.{}, safeInfix, .{ self, can_assign });
                 } else {
                     break;
+                }
+
+                if (can_assign and self.match(TokenType.equal)) {
+                    return error.InvalidAssignment;
                 }
             }
         }
     }
 }
 
+pub fn parseVariable(self: *Self, error_message: []const u8) !u8 {
+    self.parser.consume(TokenType.identifier, error_message);
+    return try self.identifierConstant(self.parser.previous.?);
+}
+
+pub fn defineVariable(self: *Self, global: u8) !void {
+    try self.emitBytes(@enumToInt(Opcode.op_define_global), global);
+}
+
+pub fn identifierConstant(self: *Self, name: Token) !u8 {
+    const obj_string = try Obj.ObjString.copy(
+        self.vm,
+        self.allocator,
+        self.parser.scanner.source[(name.start)..(name.start + name.length)],
+    );
+    return try self.makeConstant(Value.newObj(&obj_string.obj));
+}
+
 pub fn expression(self: *Self) !void {
     try self.parsePrecedence(Precedence.assignment);
 }
 
-pub fn binary(self: *Self) !void {
+pub fn expressionStatement(self: *Self) !void {
+    try self.expression();
+    self.parser.consume(TokenType.semicolon, "Expect ';' after expression.");
+    try self.emitByte(@enumToInt(Opcode.op_pop));
+}
+
+pub fn declaration(self: *Self) !void {
+    if (self.match(TokenType.variable)) {
+        try self.varDeclaration();
+    } else {
+        try self.statement();
+    }
+
+    if (self.parser.panic_mode) {
+        try self.synchronize();
+    }
+}
+
+pub fn varDeclaration(self: *Self) !void {
+    var global = try self.parseVariable("Expect variable name.");
+
+    if (self.match(TokenType.equal)) {
+        try self.expression();
+    } else {
+        try self.emitByte(@enumToInt(Opcode.op_nil));
+    }
+
+    self.parser.consume(TokenType.semicolon, "Expect ';' after variable declaration.");
+
+    try self.defineVariable(global);
+}
+
+pub fn statement(self: *Self) !void {
+    std.debug.print("{any}", .{self.parser.current});
+    if (self.match(TokenType.print)) {
+        std.debug.print("matching", .{});
+        try self.printStatement();
+    } else {
+        try self.expressionStatement();
+    }
+}
+
+pub fn printStatement(self: *Self) !void {
+    try self.expression();
+    self.parser.consume(TokenType.semicolon, "Expect ';' after value.");
+    try self.emitByte(@enumToInt(Opcode.op_print));
+}
+
+pub fn synchronize(self: *Self) !void {
+    self.parser.panic_mode = false;
+
+    while (self.parser.current.?.type != TokenType.eof) {
+        if (self.parser.previous.?.type == TokenType.semicolon) return;
+
+        switch (self.parser.current.?.type) {
+            TokenType.class,
+            TokenType.fun,
+            TokenType.variable,
+            TokenType._for,
+            TokenType._if,
+            TokenType._while,
+            TokenType.print,
+            TokenType._return,
+            => return,
+            else => {}, // do nothing
+        }
+
+        self.parser.advance();
+    }
+}
+
+pub fn binary(self: *Self, can_assign: bool) !void {
+    _ = can_assign;
     if (self.parser.previous) |safe_previous| {
         var operator_type: TokenType = safe_previous.type;
         var rule = getRule(operator_type);
@@ -182,7 +304,8 @@ pub fn binary(self: *Self) !void {
     }
 }
 
-pub fn string(self: *Self) !void {
+pub fn string(self: *Self, can_assign: bool) !void {
+    _ = can_assign;
     if (self.parser.previous) |safe_token| {
         const obj_string = try Obj.ObjString.copy(
             self.vm,
@@ -193,14 +316,31 @@ pub fn string(self: *Self) !void {
     }
 }
 
-pub fn number(self: *Self) !void {
+pub fn variable(self: *Self, can_assign: bool) !void {
+    try self.namedVariable(self.parser.previous.?, can_assign);
+}
+
+pub fn namedVariable(self: *Self, name: Token, can_assign: bool) !void {
+    var arg = try self.identifierConstant(name);
+
+    if (can_assign and self.match(TokenType.equal)) {
+        try self.expression();
+        try self.emitBytes(@enumToInt(Opcode.op_set_global), arg);
+    } else {
+        try self.emitBytes(@enumToInt(Opcode.op_get_global), arg);
+    }
+}
+
+pub fn number(self: *Self, can_assign: bool) !void {
+    _ = can_assign;
     if (self.parser.previous) |safe_previous| {
         var string_ = self.parser.scanner.source[safe_previous.start..(safe_previous.start + safe_previous.length)];
         try self.emitConstant(Value.newNumber(try std.fmt.parseFloat(f64, string_)));
     }
 }
 
-pub fn literal(self: *Self) !void {
+pub fn literal(self: *Self, can_assign: bool) !void {
+    _ = can_assign;
     if (self.parser.previous) |safe_previous| {
         switch (safe_previous.type) {
             TokenType.false => try self.emitByte(@enumToInt(Opcode.op_false)),
@@ -211,12 +351,14 @@ pub fn literal(self: *Self) !void {
     }
 }
 
-pub fn grouping(self: *Self) !void {
+pub fn grouping(self: *Self, can_assign: bool) !void {
+    _ = can_assign;
     try self.expression();
     self.parser.consume(TokenType.right_paren, "Expect ')' after expression.");
 }
 
-pub fn unary(self: *Self) !void {
+pub fn unary(self: *Self, can_assign: bool) !void {
+    _ = can_assign;
     if (self.parser.previous) |safe_previous| {
         var operator_type: TokenType = safe_previous.type;
 

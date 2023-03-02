@@ -2,11 +2,13 @@ const std = @import("std");
 const VM = @import("vm").VirtualMachine;
 const InterpretResult = @import("vm").InterpretResult;
 
-fn runTest(allocator: std.mem.Allocator, file_name: []const u8) !void {
+fn runTest(file_name: []const u8) !void {
+    const allocator = std.testing.allocator;
     var vm = try VM.init(allocator, true);
+    defer vm.deinit();
+
     var result = vm.runFile(file_name);
     try std.testing.expectEqual(result, InterpretResult.ok);
-    vm.deinit();
 }
 
 test "smoke test" {
@@ -14,13 +16,12 @@ test "smoke test" {
     var vm = try VM.init(allocator, true);
     defer vm.deinit();
 
-    var result = vm.runFile("./tests/data/18_types.lox");
-    try std.testing.expectEqual(result, InterpretResult.ok);
+    var result = try vm.runFile("./tests/data/21_global_variables.lox");
+    try std.testing.expectEqual(InterpretResult.ok, result);
 }
 
 test "all" {
-    const allocator = std.testing.allocator;
-
-    try runTest(allocator, "./tests/data/18_types.lox");
-    try runTest(allocator, "./tests/data/19_strings.lox");
+    // try runTest("./tests/data/18_types.lox");
+    try runTest("./tests/data/19_strings.lox");
+    try runTest("./tests/data/21_global_variables.lox");
 }

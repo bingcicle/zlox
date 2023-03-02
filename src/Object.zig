@@ -53,9 +53,9 @@ pub const ObjString = struct {
 
         var interned = vm.strings.findString(chars, inner_hash);
 
-        if (interned != null) {
-            vm.allocator.free(chars);
-            return interned.?;
+        if (interned) |safe_interned| {
+            vm.allocator.free(buffer);
+            return safe_interned;
         }
         const obj_str = try ObjString.create(vm, allocator, buffer, inner_hash);
 

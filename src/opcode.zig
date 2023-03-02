@@ -5,12 +5,16 @@ const OpcodeError = error{
     InvalidOpcode,
 };
 
-pub const Opcode = enum(u8) {
+pub const Opcode = enum(u16) {
     op_return,
     op_constant,
     op_nil,
     op_true,
     op_false,
+    op_pop,
+    op_get_global,
+    op_define_global,
+    op_set_global,
     op_equal,
     op_greater,
     op_less,
@@ -20,6 +24,7 @@ pub const Opcode = enum(u8) {
     op_divide,
     op_not,
     op_negate,
+    op_print,
 
     pub fn handleBinaryOp(self: Opcode, a: f64, b: f64) !Value {
         return switch (self) {

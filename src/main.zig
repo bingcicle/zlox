@@ -46,7 +46,7 @@ pub fn main() anyerror!void {
     }
     var allocator = gpa.allocator();
 
-    var _vm = VM.init(allocator, false);
+    var _vm = try VM.init(allocator, false);
     defer _vm.deinit();
 
     if (arg_iter.inner.count == 1) {
