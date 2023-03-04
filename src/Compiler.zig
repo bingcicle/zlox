@@ -1,5 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const ArrayList = std.ArrayList;
 
 const Self = @This();
 
@@ -17,12 +18,34 @@ parser: *Parser,
 compiling_chunk: *Chunk,
 allocator: Allocator,
 vm: *VM,
+locals: ArrayList(Local),
+scope_depth: usize,
+
+pub const Local = struct {
+    name: Token,
+    depth: isize,
+};
 
 const ParseRule = struct {
     prefix: ?*const fn (*Self, bool) anyerror!void,
     infix: ?*const fn (*Self, bool) anyerror!void,
     precedence: Precedence,
 };
+
+pub fn init(
+    parser: *Parser,
+    chunk: *Chunk,
+    vm: *VM,
+) Self {
+    return Self{
+        .parser = parser,
+        .compiling_chunk = chunk,
+        .allocator = vm.allocator,
+        .vm = vm,
+        .locals = ArrayList(Local).init(vm.allocator),
+        .scope_depth = 0,
+    };
+}
 
 fn getRule(token_type: TokenType) ParseRule {
     return switch (token_type) {
@@ -157,10 +180,6 @@ pub fn parsePrecedence(self: *Self, precedence: Precedence) !void {
             return;
         }
 
-        if (prefixRule) |safeRule| {
-            try @call(.{}, safeRule, .{ self, can_assign });
-        }
-
         while (@enumToInt(precedence) <= @enumToInt(getRule(self.parser.current.?.type).precedence)) {
             self.parser.advance();
             if (self.parser.previous) |inner_safe_previous| {
@@ -181,10 +200,23 @@ pub fn parsePrecedence(self: *Self, precedence: Precedence) !void {
 
 pub fn parseVariable(self: *Self, error_message: []const u8) !u8 {
     self.parser.consume(TokenType.identifier, error_message);
+
+    try self.declareVariable();
+    if (self.scope_depth > 0) return 0;
+
     return try self.identifierConstant(self.parser.previous.?);
 }
 
+pub fn markInitialized(self: *Self) void {
+    self.locals.items[self.locals.items.len - 1].depth = @intCast(isize, self.scope_depth);
+}
+
 pub fn defineVariable(self: *Self, global: u8) !void {
+    if (self.scope_depth > 0) {
+        self.markInitialized();
+        return;
+    }
+
     try self.emitBytes(@enumToInt(Opcode.op_define_global), global);
 }
 
@@ -195,6 +227,41 @@ pub fn identifierConstant(self: *Self, name: Token) !u8 {
         self.parser.scanner.source[(name.start)..(name.start + name.length)],
     );
     return try self.makeConstant(Value.newObj(&obj_string.obj));
+}
+
+pub fn declareVariable(self: *Self) !void {
+    if (self.scope_depth == 0) return;
+
+    var name = self.parser.previous.?;
+
+    var i: usize = 0;
+    while (i < self.locals.items.len) : (i += 1) {
+        var local = self.locals.items[self.locals.items.len - 1 - i];
+        if (local.depth != -1 and local.depth < self.scope_depth) {
+            break;
+        }
+
+        if (std.mem.eql(
+            u8,
+            self.parser.scanner.source[name.start .. name.start + name.length],
+            self.parser.scanner.source[local.name.start .. local.name.start + local.name.length],
+        )) {
+            return error.RedeclaredVariable;
+        }
+    }
+
+    try self.addLocal(name);
+}
+
+pub fn addLocal(self: *Self, name: Token) !void {
+    if (self.locals.items.len > 255) {
+        return error.TooManyLocals;
+    }
+    var new_local = Local{
+        .name = name,
+        .depth = -1,
+    };
+    try self.locals.append(new_local);
 }
 
 pub fn expression(self: *Self) !void {
@@ -234,12 +301,37 @@ pub fn varDeclaration(self: *Self) !void {
 }
 
 pub fn statement(self: *Self) !void {
-    std.debug.print("{any}", .{self.parser.current});
     if (self.match(TokenType.print)) {
-        std.debug.print("matching", .{});
         try self.printStatement();
+    } else if (self.match(TokenType.left_brace)) {
+        self.beginScope();
+        try self.block();
+        try self.endScope();
     } else {
         try self.expressionStatement();
+    }
+}
+
+fn block(self: *Self) !void {
+    while (!self.check(TokenType.right_brace) and !self.check(TokenType.eof)) {
+        try self.declaration();
+    }
+
+    self.parser.consume(TokenType.right_brace, "Expect '}' after block.");
+}
+
+fn beginScope(self: *Self) void {
+    self.scope_depth += 1;
+}
+
+fn endScope(self: *Self) !void {
+    self.scope_depth -= 1;
+
+    while (self.locals.items.len > 0 and
+        self.locals.items[self.locals.items.len - 1].depth > self.scope_depth)
+    {
+        try self.emitByte(@enumToInt(Opcode.op_pop));
+        _ = self.locals.pop();
     }
 }
 
@@ -321,14 +413,47 @@ pub fn variable(self: *Self, can_assign: bool) !void {
 }
 
 pub fn namedVariable(self: *Self, name: Token, can_assign: bool) !void {
-    var arg = try self.identifierConstant(name);
+    var get_op: Opcode = undefined;
+    var set_op: Opcode = undefined;
+    var arg: u8 = undefined;
+    var resolved_local = try self.resolveLocal(name);
+
+    if (resolved_local != -1) {
+        arg = @intCast(u8, resolved_local);
+        get_op = Opcode.op_get_local;
+        set_op = Opcode.op_set_local;
+    } else {
+        arg = try self.identifierConstant(name);
+        get_op = Opcode.op_get_global;
+        set_op = Opcode.op_set_global;
+    }
 
     if (can_assign and self.match(TokenType.equal)) {
         try self.expression();
-        try self.emitBytes(@enumToInt(Opcode.op_set_global), arg);
+        try self.emitBytes(@enumToInt(set_op), arg);
     } else {
-        try self.emitBytes(@enumToInt(Opcode.op_get_global), arg);
+        try self.emitBytes(@enumToInt(get_op), arg);
     }
+}
+
+pub fn resolveLocal(self: *Self, name: Token) !isize {
+    var i: usize = 0;
+    while (i < self.locals.items.len) : (i += 1) {
+        var local = self.locals.items[self.locals.items.len - 1 - i];
+
+        if (std.mem.eql(
+            u8,
+            self.parser.scanner.source[name.start .. name.start + name.length],
+            self.parser.scanner.source[local.name.start .. local.name.start + local.name.length],
+        )) {
+            if (local.depth == -1) {
+                return error.ReadAndInitLocalVar;
+            }
+            return @intCast(isize, i);
+        }
+    }
+
+    return -1;
 }
 
 pub fn number(self: *Self, can_assign: bool) !void {
@@ -402,6 +527,10 @@ pub fn emitBytes(
 ) !void {
     try self.emitByte(byte1);
     try self.emitByte(byte2);
+}
+
+pub fn deinit(self: *Self) void {
+    self.locals.deinit();
 }
 
 pub const Precedence = enum(u16) {

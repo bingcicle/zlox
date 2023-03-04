@@ -14,6 +14,7 @@ const ObjString = @import("Object.zig").ObjString;
 const Obj = @import("Object.zig");
 const Table = @import("Table.zig");
 const builtin = @import("builtin");
+const Local = @import("Compiler.zig").Local;
 
 fn erase(ptr: anytype) void {
     const T = @TypeOf(ptr);
@@ -47,6 +48,7 @@ const Self = @This();
 
 allocator: Allocator,
 chunk: Chunk,
+compiler: Compiler,
 objects: ?*Obj,
 globals: Table,
 strings: Table,
@@ -62,6 +64,7 @@ pub fn init(allocator: Allocator, debug_trace_execution: bool) !Self {
         .globals = try Table.init(allocator),
         .strings = try Table.init(allocator),
         .objects = null,
+        .compiler = undefined,
         .debug_trace_execution = debug_trace_execution,
         .stack = stack,
     };
@@ -111,13 +114,17 @@ pub fn interpret(self: *Self, source: []const u8) !InterpretResult {
     };
 
     // compile() returns false if an error occurred.
-    var compiler = Compiler{
-        .parser = &parser,
-        .compiling_chunk = &chunk,
-        .allocator = self.allocator,
-        .vm = self,
-    };
-    var had_error = try compiler.compile();
+    self.compiler = Compiler.init(&parser, &chunk, self);
+    // var compiler = Compiler{
+    //     .parser = &parser,
+    //     .compiling_chunk = &chunk,
+    //     .allocator = self.allocator,
+    //     .vm = self,
+    //     .locals = ArrayList(Local).init(self.allocator),
+    //     .scope_depth = 0,
+    // };
+
+    var had_error = try self.compiler.compile();
 
     if (!had_error) {
         return InterpretResult.compile_error;
@@ -170,6 +177,16 @@ pub fn run(self: *Self) !InterpretResult {
                 _ = self.pop();
                 continue;
             },
+            Opcode.op_get_local => {
+                var slot = self.read_byte();
+                try self.push(self.stack.items[slot]);
+                continue;
+            },
+            Opcode.op_set_local => {
+                var slot = self.read_byte();
+                try self.stack.insert(slot, self.peek(0).?);
+                continue;
+            },
             Opcode.op_get_global => {
                 var name = self.read_string();
 
@@ -195,7 +212,6 @@ pub fn run(self: *Self) !InterpretResult {
                     _ = try self.runtimeError(RuntimeError.UndefinedVariable, name.chars);
                     return InterpretResult.runtime_error;
                 }
-                _ = self.pop();
                 continue;
             },
             Opcode.op_equal => {
@@ -278,6 +294,7 @@ pub fn run(self: *Self) !InterpretResult {
 pub fn deinit(self: *Self) void {
     self.stack.deinit();
     self.chunk.deinit();
+    self.compiler.deinit();
     self.freeTable(&self.globals);
     self.freeTable(&self.strings);
     self.freeObjects();
@@ -308,7 +325,6 @@ pub fn peek(self: *Self, distance: usize) ?Value {
 }
 
 pub fn pop(self: *Self) Value {
-    std.debug.print("stack: {}", .{self.stack.items.len});
     return self.stack.pop();
 }
 

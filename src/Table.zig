@@ -40,7 +40,6 @@ pub fn set(self: *Table, key: *Obj.ObjString, value: Value) !bool {
 
     var entry = self.findEntry(key);
 
-    std.debug.print("set entry: {any}\n", .{entry.value});
     var is_new_key = entry.key == null;
 
     if (is_new_key and Value.isNil(entry.value)) {
@@ -50,7 +49,6 @@ pub fn set(self: *Table, key: *Obj.ObjString, value: Value) !bool {
     entry.key = key;
     entry.value = value;
 
-    std.debug.print("set entry: {any}\n", .{entry.value});
     return is_new_key;
 }
 
@@ -84,7 +82,6 @@ fn adjustCapacity(self: *Table) !void {
     const new_capacity = if (self.capacity < 8) 8 else self.capacity * 2;
     var entries = try self.allocator.alloc(Entry, new_capacity);
 
-    std.debug.print("entries: {}", .{entries.len});
     var i: usize = 0;
     while (i < new_capacity) : (i += 1) {
         entries[i].key = null;
@@ -132,7 +129,6 @@ pub fn findEntry(self: *Table, key: *Obj.ObjString) *Entry {
                 }
             }
         }
-        std.debug.print("idx: {} {}\n", .{ index, self.capacity });
         index = (index + 1) % self.capacity;
     }
 }

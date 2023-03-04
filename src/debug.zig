@@ -14,6 +14,12 @@ pub fn printValue(value: Value) void {
     }
 }
 
+pub fn byteInstruction(name: []const u8, chunk: anytype, offset: usize) usize {
+    var slot = chunk.code.ptr[offset + 1];
+    std.debug.print("{s} {d:.4}\n", .{ name, slot });
+    return offset + 2;
+}
+
 pub fn simpleInstruction(name: []const u8, offset: usize) usize {
     std.debug.print("{s}\n", .{name});
     return offset + 1;
@@ -73,6 +79,12 @@ pub fn disassembleInstruction(chunk: anytype, offset: usize) usize {
         },
         Opcode.op_pop => {
             return simpleInstruction("OP_POP", offset);
+        },
+        Opcode.op_get_local => {
+            return byteInstruction("OP_GET_LOCAL", chunk, offset);
+        },
+        Opcode.op_set_local => {
+            return byteInstruction("OP_SET_LOCAL", chunk, offset);
         },
         Opcode.op_get_global => {
             return constantInstruction("OP_GET_GLOBAL", chunk, offset);

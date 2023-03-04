@@ -5,15 +5,17 @@ const OpcodeError = error{
     InvalidOpcode,
 };
 
-pub const Opcode = enum(u16) {
+pub const Opcode = enum(u8) {
     op_return,
     op_constant,
     op_nil,
     op_true,
     op_false,
     op_pop,
+    op_get_local,
     op_get_global,
     op_define_global,
+    op_set_local,
     op_set_global,
     op_equal,
     op_greater,
