@@ -59,7 +59,6 @@ pub fn deinit(self: *Chunk) void {
     self.allocator.free(self.code.ptr[0..self.capacity]);
     self.allocator.free(self.lines.ptr[0..self.capacity]);
     self.constants.deinit();
-    self.* = undefined;
 }
 
 test "writeChunk" {

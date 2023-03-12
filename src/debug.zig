@@ -33,11 +33,22 @@ pub fn constantInstruction(name: []const u8, chunk: anytype, offset: usize) usiz
     return offset + 2;
 }
 
+pub fn jumpInstruction(name: []const u8, sign: isize, chunk: anytype, offset: usize) usize {
+    var jump = @as(u16, chunk.code.ptr[offset + 1]);
+    jump <<= 8;
+    jump |= chunk.code.ptr[offset + 2];
+
+    std.debug.print("{s} {d:.4} -> {d}\n", .{ name, offset, @intCast(isize, offset) + 3 + sign * @intCast(isize, jump) });
+    return offset + 3;
+}
+
 pub fn disassembleInstruction(chunk: anytype, offset: usize) usize {
-    if (offset > 9) {
-        std.debug.print("{d}", .{offset});
-    } else {
+    if (offset > 99) {
         std.debug.print("{d} ", .{offset});
+    } else if (offset > 9) {
+        std.debug.print("{d}  ", .{offset});
+    } else {
+        std.debug.print("{d}   ", .{offset});
     }
 
     if (offset > 0 and chunk.lines.ptr[offset] == chunk.lines.ptr[offset - 1]) {
@@ -109,6 +120,15 @@ pub fn disassembleInstruction(chunk: anytype, offset: usize) usize {
         },
         Opcode.op_print => {
             return simpleInstruction("OP_PRINT", offset);
+        },
+        Opcode.op_jump => {
+            return jumpInstruction("OP_JUMP", 1, chunk, offset);
+        },
+        Opcode.op_jump_if_false => {
+            return jumpInstruction("OP_JUMP_IF_FALSE", 1, chunk, offset);
+        },
+        Opcode.op_loop => {
+            return jumpInstruction("OP_LOOP", -1, chunk, offset);
         },
     }
 }

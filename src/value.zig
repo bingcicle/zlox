@@ -135,7 +135,6 @@ pub fn ValueArray() type {
 
         pub fn deinit(self: *Self) void {
             self.allocator.free(self.allocatedSlice());
-            self.* = undefined;
         }
 
         fn growArray(self: *Self, new_capacity: usize) anyerror!void {

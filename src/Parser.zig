@@ -66,7 +66,7 @@ pub fn errorAt(self: *Parser, token: Token, msg: []const u8) void {
     switch (token.type) {
         TokenType.eof => std.debug.print(" at end", .{}),
         TokenType.err => {},
-        else => std.debug.print(" at {d} {d}", .{ token.start, token.start + token.length }),
+        else => std.debug.print(" at '{s}'", .{self.scanner.source[token.start .. token.start + token.length]}),
     }
 
     std.debug.print(": {s}\n", .{msg});

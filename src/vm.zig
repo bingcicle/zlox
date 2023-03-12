@@ -87,23 +87,30 @@ pub fn runFile(self: *Self, path: []const u8) !InterpretResult {
     return try self.interpret(&buf);
 }
 
-fn read_byte(self: *Self) u8 {
+fn readByte(self: *Self) u8 {
     var byte = self.ip[0];
     self.ip += 1;
     return byte;
 }
 
-fn read_constant(self: *Self) Value {
-    return self.chunk.constants.values.ptr[self.read_byte()];
+fn readShort(self: *Self) u16 {
+    var first_byte = @as(u16, @as(u16, self.ip[0]) << 8);
+    var second_byte = @as(u16, self.ip[1]);
+    self.ip += 2;
+    return first_byte | second_byte;
 }
 
-fn read_string(self: *Self) *Obj.ObjString {
-    return Value.asString(self.read_constant());
+fn readConstant(self: *Self) Value {
+    return self.chunk.constants.values.ptr[self.readByte()];
+}
+
+fn readString(self: *Self) *Obj.ObjString {
+    return Value.asString(self.readConstant());
 }
 
 pub fn interpret(self: *Self, source: []const u8) !InterpretResult {
     var scanner = Scanner.init(source);
-    var chunk = Chunk.init(self.allocator);
+    self.chunk = Chunk.init(self.allocator);
 
     var parser = Parser{
         .current = null,
@@ -114,15 +121,8 @@ pub fn interpret(self: *Self, source: []const u8) !InterpretResult {
     };
 
     // compile() returns false if an error occurred.
-    self.compiler = Compiler.init(&parser, &chunk, self);
-    // var compiler = Compiler{
-    //     .parser = &parser,
-    //     .compiling_chunk = &chunk,
-    //     .allocator = self.allocator,
-    //     .vm = self,
-    //     .locals = ArrayList(Local).init(self.allocator),
-    //     .scope_depth = 0,
-    // };
+    self.compiler = Compiler.init(&parser, &self.chunk, self);
+    std.debug.print("\n", .{});
 
     var had_error = try self.compiler.compile();
 
@@ -130,8 +130,7 @@ pub fn interpret(self: *Self, source: []const u8) !InterpretResult {
         return InterpretResult.compile_error;
     }
 
-    self.chunk = chunk;
-    self.ip = chunk.code.ptr;
+    self.ip = self.chunk.code.ptr;
 
     var result: InterpretResult = try self.run();
 
@@ -153,11 +152,11 @@ pub fn run(self: *Self) !InterpretResult {
             _ = debug.disassembleInstruction(self.chunk, offset);
         }
 
-        var opcode = @intToEnum(Opcode, self.read_byte());
+        var opcode = @intToEnum(Opcode, self.readByte());
 
         switch (opcode) {
             Opcode.op_constant => {
-                var constant = self.read_constant();
+                var constant = self.readConstant();
                 _ = try self.push(constant);
                 continue;
             },
@@ -178,17 +177,17 @@ pub fn run(self: *Self) !InterpretResult {
                 continue;
             },
             Opcode.op_get_local => {
-                var slot = self.read_byte();
+                var slot = self.readByte();
                 try self.push(self.stack.items[slot]);
                 continue;
             },
             Opcode.op_set_local => {
-                var slot = self.read_byte();
+                var slot = self.readByte();
                 try self.stack.insert(slot, self.peek(0).?);
                 continue;
             },
             Opcode.op_get_global => {
-                var name = self.read_string();
+                var name = self.readString();
 
                 var value: Value = undefined;
                 if (!self.globals.get(name, &value)) {
@@ -200,13 +199,13 @@ pub fn run(self: *Self) !InterpretResult {
                 continue;
             },
             Opcode.op_define_global => {
-                var name = self.read_string();
+                var name = self.readString();
                 _ = try self.globals.set(name, self.peek(0).?);
                 _ = self.pop();
                 continue;
             },
             Opcode.op_set_global => {
-                var name = self.read_string();
+                var name = self.readString();
                 if (try self.globals.set(name, self.peek(0).?)) {
                     _ = self.globals.delete(name);
                     _ = try self.runtimeError(RuntimeError.UndefinedVariable, name.chars);
@@ -282,6 +281,22 @@ pub fn run(self: *Self) !InterpretResult {
                 std.debug.print("\n", .{});
                 continue;
             },
+            Opcode.op_jump => {
+                var offset = self.readShort();
+                self.ip += offset;
+                continue;
+            },
+            Opcode.op_jump_if_false => {
+                var offset = self.readShort();
+
+                if (Value.isFalsey(self.peek(0).?)) self.ip += offset;
+                continue;
+            },
+            Opcode.op_loop => {
+                var offset = self.readShort();
+                self.ip -= offset;
+                continue;
+            },
             Opcode.op_return => {
                 // Exit interpreter.
                 return InterpretResult.ok;
@@ -292,11 +307,11 @@ pub fn run(self: *Self) !InterpretResult {
 }
 
 pub fn deinit(self: *Self) void {
-    self.stack.deinit();
-    self.chunk.deinit();
-    self.compiler.deinit();
     self.freeTable(&self.globals);
     self.freeTable(&self.strings);
+    self.compiler.deinit();
+    self.chunk.deinit();
+    self.stack.deinit();
     self.freeObjects();
     self.* = undefined;
 }

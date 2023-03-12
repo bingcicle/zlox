@@ -81,7 +81,7 @@ pub const TokenType = enum {
                 if (scanner.current - scanner.start > 1) {
                     f_token = switch (scanner.source[scanner.start + 1]) {
                         'a' => checkKeyword(scanner, 2, 3, "lse", TokenType.false),
-                        'o' => checkKeyword(scanner, 2, 1, "r", TokenType._or),
+                        'o' => checkKeyword(scanner, 2, 1, "r", TokenType._for),
                         'u' => checkKeyword(scanner, 2, 1, "n", TokenType.fun),
                         else => Self.identifier,
                     };

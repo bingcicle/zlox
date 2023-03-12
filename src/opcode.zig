@@ -27,6 +27,9 @@ pub const Opcode = enum(u8) {
     op_not,
     op_negate,
     op_print,
+    op_jump,
+    op_jump_if_false,
+    op_loop,
 
     pub fn handleBinaryOp(self: Opcode, a: f64, b: f64) !Value {
         return switch (self) {
